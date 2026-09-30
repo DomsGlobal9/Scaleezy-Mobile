@@ -6,7 +6,7 @@ import 'screens/main_navigation_screen.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Set system UI overlay style for clean light aesthetic
+  // Set system UI overlay style for clean light boutique aesthetic
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -28,6 +28,7 @@ class ScaleezyApp extends StatelessWidget {
       title: 'ScaleEzy Inventory',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      themeMode: ThemeMode.light,
       home: const MainNavigationScreen(),
     );
   }
