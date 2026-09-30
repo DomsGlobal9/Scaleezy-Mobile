@@ -120,7 +120,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
               child: Icon(
                 isSelected ? selectedIcon : icon,
-                color: isSelected ? Colors.black : AppColors.accentGold,
+                color: isSelected ? Colors.white : AppColors.accentGold,
                 size: 20,
               ),
             ),

@@ -230,7 +230,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                 child: DropdownButton<String>(
                   value: _selectedReason,
                   isExpanded: true,
-                  dropdownColor: AppColors.bgSurface,
+                  dropdownColor: AppColors.bgCard,
                   style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
                   items: reasons.map((r) {
                     return DropdownMenuItem(
@@ -270,7 +270,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryColor,
-                      foregroundColor: Colors.black,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),

@@ -340,11 +340,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     labelStyle: TextStyle(
                       fontSize: 11,
                       fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                      color: isSelected ? Colors.black : AppColors.textSecondary,
+                      color: isSelected ? Colors.white : AppColors.textSecondary,
                     ),
                     backgroundColor: AppColors.bgCard,
                     selectedColor: AppColors.accentGold,
-                    checkmarkColor: Colors.black,
+                    checkmarkColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                       side: BorderSide(

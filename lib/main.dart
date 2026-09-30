@@ -6,13 +6,13 @@ import 'screens/main_navigation_screen.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Set system UI overlay style for dark boutique aesthetic
+  // Set system UI overlay style for clean light aesthetic
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.dark,
       systemNavigationBarColor: AppColors.bgCard,
-      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
 
@@ -27,7 +27,7 @@ class ScaleezyApp extends StatelessWidget {
     return MaterialApp(
       title: 'ScaleEzy Inventory',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
       home: const MainNavigationScreen(),
     );
   }

@@ -1,47 +1,47 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Deep luxury dark palette inspired by ScaleEzy Web
-  static const Color bgDark = Color(0xFF000000);
-  static const Color bgCard = Color(0xFF0D0D11);
-  static const Color bgSurface = Color(0xFF14141A);
-  static const Color bgInput = Color(0xFF1A1A22);
-  static const Color bgHover = Color(0xFF22222D);
+  // Clean, premium light mode palette for ScaleEzy
+  static const Color bgDark = Color(0xFFF8FAFC); // Main light background (slate 50)
+  static const Color bgCard = Color(0xFFFFFFFF); // Pure white cards & navigation
+  static const Color bgSurface = Color(0xFFF1F5F9); // Light surface / chips / badges (slate 100)
+  static const Color bgInput = Color(0xFFF8FAFC); // Form inputs
+  static const Color bgHover = Color(0xFFE2E8F0); // Hover/press states
 
   // Borders
-  static const Color borderLight = Color(0x1AFFFFFF); // rgba(255, 255, 255, 0.1)
-  static const Color borderFocus = Color(0x33FFFFFF); // rgba(255, 255, 255, 0.2)
+  static const Color borderLight = Color(0xFFE2E8F0); // Subtle clean border
+  static const Color borderFocus = Color(0xFFCBD5E1);
 
   // Typography
-  static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFFA1A1AA);
-  static const Color textMuted = Color(0xFF71717A);
+  static const Color textPrimary = Color(0xFF0F172A); // Deep slate 900 for high readability
+  static const Color textSecondary = Color(0xFF475569); // Slate 600
+  static const Color textMuted = Color(0xFF94A3B8); // Slate 400
 
   // Boutique Accent Colors
-  static const Color accentGold = Color(0xFFE2C171);
-  static const Color accentGoldHover = Color(0xFFFCD34D);
-  static const Color accentDanger = Color(0xFFEF4444);
-  static const Color accentSuccess = Color(0xFF10B981);
-  static const Color accentBlue = Color(0xFF3B82F6);
-  static const Color accentWarning = Color(0xFFF59E0B);
-  static const Color accentPurple = Color(0xFFA855F7);
+  static const Color accentGold = Color(0xFFB45309); // Rich amber/gold, high contrast on light bg
+  static const Color accentGoldHover = Color(0xFF92400E);
+  static const Color accentDanger = Color(0xFFDC2626);
+  static const Color accentSuccess = Color(0xFF16A34A);
+  static const Color accentBlue = Color(0xFF2563EB);
+  static const Color accentWarning = Color(0xFFD97706);
+  static const Color accentPurple = Color(0xFF7C3AED);
 }
 
 class AppTheme {
-  static ThemeData get darkTheme {
+  static ThemeData get lightTheme {
     return ThemeData(
-      brightness: Brightness.dark,
+      brightness: Brightness.light,
       scaffoldBackgroundColor: AppColors.bgDark,
       primaryColor: AppColors.accentGold,
-      fontFamily: 'Roboto', // Default clean font
-      colorScheme: const ColorScheme.dark(
+      fontFamily: 'Roboto',
+      colorScheme: const ColorScheme.light(
         primary: AppColors.accentGold,
         secondary: AppColors.accentBlue,
         surface: AppColors.bgCard,
         error: AppColors.accentDanger,
       ),
       appBarTheme: const AppBarTheme(
-        backgroundColor: AppColors.bgDark,
+        backgroundColor: AppColors.bgCard,
         elevation: 0,
         centerTitle: false,
         titleTextStyle: TextStyle(
@@ -62,7 +62,7 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AppColors.bgCard,
-        indicatorColor: AppColors.accentGold.withValues(alpha: 0.15),
+        indicatorColor: AppColors.accentGold.withValues(alpha: 0.12),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return const TextStyle(

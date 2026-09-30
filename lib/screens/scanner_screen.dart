@@ -154,7 +154,7 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                             SizedBox(width: 8),
                             Text(
                               'Align 50x25mm garment tag in box',
-                              style: TextStyle(fontSize: 11, color: AppColors.textPrimary),
+                              style: TextStyle(fontSize: 11, color: Colors.white),
                             ),
                           ],
                         ),
@@ -294,7 +294,7 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                           label: const Text('Stock In'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.accentSuccess,
-                            foregroundColor: Colors.black,
+                            foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),

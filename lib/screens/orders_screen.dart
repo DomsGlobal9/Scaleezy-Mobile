@@ -74,7 +74,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     selectedColor: AppColors.accentGold,
                     backgroundColor: AppColors.bgCard,
                     labelStyle: TextStyle(
-                      color: isSelected ? Colors.black : AppColors.textSecondary,
+                      color: isSelected ? Colors.white : AppColors.textSecondary,
                       fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                       fontSize: 11,
                     ),
