@@ -1,6 +1,6 @@
-# scaleezy
+# Scaleezy-Mobile
 
-A new Flutter project.
+A Flutter project for the ScaleEzy app.
 
 ## Getting Started
 
