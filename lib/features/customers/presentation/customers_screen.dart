@@ -1,10 +1,7 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:scaleezy/app/app_routes.dart';
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/contact_utils.dart';
@@ -12,45 +9,35 @@ import 'package:scaleezy/core/utils/money.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/customers/data/customer_models.dart';
-import 'package:scaleezy/features/customers/data/customer_repository.dart';
+import 'package:scaleezy/features/customers/presentation/view_models/customer_detail_view_model.dart';
+import 'package:scaleezy/features/customers/presentation/view_models/customer_form_view_model.dart';
+import 'package:scaleezy/features/customers/presentation/view_models/customers_view_model.dart';
 
 class CustomersScreen extends StatefulWidget {
-  const CustomersScreen({super.key});
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final CustomersViewModel? viewModel;
+
+  const CustomersScreen({super.key, this.viewModel});
 
   @override
   State<CustomersScreen> createState() => _CustomersScreenState();
 }
 
 class _CustomersScreenState extends State<CustomersScreen> {
-  final _repo = CustomerRepository();
+  late final CustomersViewModel _vm = widget.viewModel ?? CustomersViewModel();
   final _query = TextEditingController();
-  Timer? _debounce;
-  List<Customer>? _customers;
-  String? _error;
-  int _req = 0;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _vm.load();
   }
 
   @override
   void dispose() {
-    _debounce?.cancel();
+    if (widget.viewModel == null) _vm.dispose();
     _query.dispose();
     super.dispose();
-  }
-
-  Future<void> _load() async {
-    final id = ++_req;
-    setState(() => _error = null);
-    try {
-      final list = await _repo.customers(search: _query.text);
-      if (mounted && id == _req) setState(() => _customers = list);
-    } on ApiException catch (e) {
-      if (mounted && id == _req) setState(() => _error = e.message);
-    }
   }
 
   Future<void> _add() async {
@@ -65,19 +52,27 @@ class _CustomersScreenState extends State<CustomersScreen> {
     );
     if (created != null && mounted) {
       showMessage(context, '${created.name} added.', success: true);
-      _load();
+      _vm.load();
       _open(created);
     }
   }
 
   Future<void> _open(Customer c) async {
     await AppRoutes.customerDetail(context, c);
-    _load();
+    _vm.load();
   }
 
   @override
   Widget build(BuildContext context) {
-    final list = _customers;
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
+    final list = _vm.customers;
+    final error = _vm.error;
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       floatingActionButton: SessionScope.of(context).can('customer:create')
@@ -106,16 +101,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
               child: SearchField(
                 controller: _query,
                 hint: 'Name, phone, email or code',
-                onChanged: (_) {
-                  setState(() {});
-                  _debounce?.cancel();
-                  _debounce = Timer(const Duration(milliseconds: 400), _load);
-                },
+                onChanged: _vm.search,
               ),
             ),
             Expanded(
-              child: list == null && _error != null
-                  ? ErrorView(message: _error!, onRetry: _load)
+              child: list == null && error != null
+                  ? ErrorView(message: error, onRetry: _vm.load)
                   : list == null
                   ? ListView(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -129,13 +120,13 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     )
                   : list.isEmpty
                   ? ErrorView(
-                      message: _query.text.isEmpty
+                      message: _vm.query.isEmpty
                           ? 'No customers yet.'
-                          : 'Nobody matches "${_query.text}".',
+                          : 'Nobody matches "${_vm.query}".',
                     )
                   : RefreshIndicator(
                       color: AppColors.accentGold,
-                      onRefresh: _load,
+                      onRefresh: _vm.load,
                       child: ListView.builder(
                         padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
                         itemCount: list.length,
@@ -235,10 +226,14 @@ class CustomerDetailScreen extends StatefulWidget {
   final String customerId;
   final Customer? preview;
 
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final CustomerDetailViewModel? viewModel;
+
   const CustomerDetailScreen({
     super.key,
     required this.customerId,
     this.preview,
+    this.viewModel,
   });
 
   @override
@@ -246,25 +241,20 @@ class CustomerDetailScreen extends StatefulWidget {
 }
 
 class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
-  final _repo = CustomerRepository();
+  late final CustomerDetailViewModel _vm =
+      widget.viewModel ?? CustomerDetailViewModel(widget.customerId);
   final _date = DateFormat('d MMM yyyy');
-  Customer? _full;
-  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _vm.load();
   }
 
-  Future<void> _load() async {
-    setState(() => _error = null);
-    try {
-      final c = await _repo.customer(widget.customerId);
-      if (mounted) setState(() => _full = c);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    }
+  @override
+  void dispose() {
+    if (widget.viewModel == null) _vm.dispose();
+    super.dispose();
   }
 
   Future<void> _edit() async {
@@ -275,18 +265,27 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
-      builder: (_) => _CustomerForm(existing: _full ?? widget.preview),
+      builder: (_) => _CustomerForm(existing: _vm.full ?? widget.preview),
     );
     if (updated != null && mounted) {
       showMessage(context, 'Saved.', success: true);
-      _load();
+      _vm.load();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = _full ?? widget.preview;
-    final orders = _full?.orders ?? const [];
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
+    final full = _vm.full;
+    final error = _vm.error;
+    final c = full ?? widget.preview;
+    final orders = full?.orders ?? const [];
     final live = orders.where((o) => o.status != 'CANCELLED').toList();
     final spend = live.fold<double>(0, (a, o) => a + o.totalAmount);
     final colour = avatarColour(widget.customerId);
@@ -296,7 +295,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       body: SafeArea(
         child: RefreshIndicator(
           color: AppColors.accentGold,
-          onRefresh: _load,
+          onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 32),
             children: [
@@ -312,10 +311,10 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                     ),
                 ],
               ),
-              if (c == null && _error != null)
+              if (c == null && error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 80),
-                  child: ErrorView(message: _error!, onRetry: _load),
+                  child: ErrorView(message: error, onRetry: _vm.load),
                 )
               else if (c == null)
                 const Padding(
@@ -404,7 +403,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                   ).entrance(0),
                 ),
                 const SizedBox(height: 20),
-                if (_full != null)
+                if (full != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
@@ -609,15 +608,14 @@ class _CustomerForm extends StatefulWidget {
 }
 
 class _CustomerFormState extends State<_CustomerForm> {
+  late final _vm = CustomerFormViewModel(widget.existing);
   final _form = GlobalKey<FormState>();
   late final _name = TextEditingController(text: widget.existing?.name);
   late final _phone = TextEditingController(text: widget.existing?.phone);
   late final _email = TextEditingController(text: widget.existing?.email);
-  bool _busy = false;
-  String? _error;
-
   @override
   void dispose() {
+    _vm.dispose();
     _name.dispose();
     _phone.dispose();
     _email.dispose();
@@ -626,34 +624,13 @@ class _CustomerFormState extends State<_CustomerForm> {
 
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    final repo = CustomerRepository();
-    try {
-      final e = widget.existing;
-      final saved = e == null
-          ? await repo.createCustomer(
-              name: _name.text,
-              phone: _phone.text,
-              email: _email.text,
-            )
-          : await repo.updateCustomer(
-              e.id,
-              name: _name.text,
-              phone: _phone.text,
-              email: _email.text,
-            );
-      if (mounted) Navigator.of(context).pop(saved);
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = e.message;
-        });
-      }
-    }
+    final error = await _vm.save(
+      name: _name.text,
+      phone: _phone.text,
+      email: _email.text,
+    );
+    // A failure shows under the fields (_vm.error), inside the sheet.
+    if (error == null && mounted) Navigator.of(context).pop(_vm.saved);
   }
 
   InputDecoration _dec(String label, IconData icon) => InputDecoration(
@@ -669,6 +646,14 @@ class _CustomerFormState extends State<_CustomerForm> {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildForm(),
+    );
+  }
+
+  Widget _buildForm() {
+    final error = _vm.error;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         20,
@@ -710,10 +695,10 @@ class _CustomerFormState extends State<_CustomerForm> {
               keyboardType: TextInputType.emailAddress,
               decoration: _dec('Email (optional)', Icons.mail_outline_rounded),
             ),
-            if (_error != null) ...[
+            if (error != null) ...[
               const SizedBox(height: 12),
               Text(
-                _error!,
+                error,
                 style: const TextStyle(
                   color: AppColors.accentDanger,
                   fontWeight: FontWeight.w600,
@@ -722,7 +707,7 @@ class _CustomerFormState extends State<_CustomerForm> {
             ],
             const SizedBox(height: 16),
             FilledButton(
-              onPressed: _busy ? null : _save,
+              onPressed: _vm.busy ? null : _save,
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.accentGold,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -730,7 +715,7 @@ class _CustomerFormState extends State<_CustomerForm> {
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),
-              child: _busy
+              child: _vm.busy
                   ? const SizedBox(
                       width: 20,
                       height: 20,

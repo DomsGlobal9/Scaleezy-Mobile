@@ -1,80 +1,72 @@
 import 'package:flutter/material.dart';
 
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/contact_utils.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/team/data/team_models.dart';
-import 'package:scaleezy/features/team/data/team_repository.dart';
+import 'package:scaleezy/features/team/presentation/view_models/team_view_model.dart';
 
 class TeamScreen extends StatefulWidget {
-  const TeamScreen({super.key});
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final TeamViewModel? viewModel;
+
+  const TeamScreen({super.key, this.viewModel});
 
   @override
   State<TeamScreen> createState() => _TeamScreenState();
 }
 
 class _TeamScreenState extends State<TeamScreen> {
-  List<TeamMember>? _members;
-  String? _error;
+  late final TeamViewModel _vm = widget.viewModel ?? TeamViewModel();
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _vm.load();
   }
 
-  Future<void> _load() async {
-    setState(() => _error = null);
-    try {
-      final m = await TeamRepository().team();
-      if (mounted) setState(() => _members = m);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    }
+  @override
+  void dispose() {
+    if (widget.viewModel == null) _vm.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
     final me = SessionScope.of(context).user?.id;
-    final members = [...?_members]
-      ..sort((a, b) {
-        if (a.status != b.status) return a.status == 'ACTIVE' ? -1 : 1;
-        return (b.lastActiveAt ?? DateTime(0)).compareTo(
-          a.lastActiveAt ?? DateTime(0),
-        );
-      });
-    final activeNow = members
-        .where(
-          (m) =>
-              m.lastActiveAt != null &&
-              DateTime.now().difference(m.lastActiveAt!).inMinutes < 15,
-        )
-        .length;
+    final members = _vm.members;
+    final error = _vm.error;
 
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: RefreshIndicator(
           color: AppColors.accentGold,
-          onRefresh: _load,
+          onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 32),
             children: [
               PageHeader(
                 title: 'Team & Users',
-                subtitle: _members == null
+                subtitle: members == null
                     ? null
-                    : '${members.length} people • $activeNow active now',
+                    : '${members.length} people • ${_vm.activeNow} active now',
               ),
-              if (_members == null && _error != null)
+              if (members == null && error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 80),
-                  child: ErrorView(message: _error!, onRetry: _load),
+                  child: ErrorView(message: error, onRetry: _vm.load),
                 )
-              else if (_members == null)
+              else if (members == null)
                 for (var i = 0; i < 4; i++)
                   const Padding(
                     padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
@@ -104,9 +96,7 @@ class _TeamScreenState extends State<TeamScreen> {
 
   Widget _card(TeamMember m, {required bool isMe}) {
     final colour = avatarColour(m.id);
-    final online =
-        m.lastActiveAt != null &&
-        DateTime.now().difference(m.lastActiveAt!).inMinutes < 15;
+    final online = TeamViewModel.isOnline(m);
     final inactive = m.status != 'ACTIVE';
     return Opacity(
       opacity: inactive ? 0.6 : 1,
