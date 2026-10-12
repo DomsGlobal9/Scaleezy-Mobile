@@ -62,4 +62,29 @@ abstract final class ApiEndpoints {
 
   // Team
   static const teamMembers = '/team/members';
+
+  // Stock counts (audits)
+  static const stockCounts = '/stock-counts';
+  static String stockCount(String id) => '/stock-counts/$id';
+  static String startStockCount(String id) => '/stock-counts/$id/start';
+  static String stockCountItem(String id, String itemId) =>
+      '/stock-counts/$id/items/$itemId';
+  static String completeStockCount(String id) => '/stock-counts/$id/complete';
+  static String cancelStockCount(String id) => '/stock-counts/$id/cancel';
+
+  // Customer credit & loyalty
+  static String customerLoyalty(String id) => '/loyalty/customers/$id';
+  static String customerStoreCredit(String id) =>
+      '/counter-returns/credit/customers/$id';
+
+  // Picking, dispatch & transfers
+  static const pickOrders = '/shelves/pick/orders';
+  static const pickList = '/shelves/pick/list';
+  static const reportNotFound = '/shelves/not-found';
+  static const dispatches = '/dispatches';
+  static const inventoryTransfers = '/inventory-transfers';
+
+  // Day book & receipts
+  static const dayBook = '/daybook';
+  static String receipt(String orderId) => '/counter-sales/$orderId/receipt';
 }

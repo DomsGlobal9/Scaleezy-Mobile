@@ -45,4 +45,28 @@ void main() {
     );
     expect(ApiEndpoints.teamMembers, '/team/members');
   });
+
+  test('stock count, credit, picking, transfer and day book paths', () {
+    expect(ApiEndpoints.stockCounts, '/stock-counts');
+    expect(ApiEndpoints.stockCount('c1'), '/stock-counts/c1');
+    expect(ApiEndpoints.startStockCount('c1'), '/stock-counts/c1/start');
+    expect(
+      ApiEndpoints.stockCountItem('c1', 'i1'),
+      '/stock-counts/c1/items/i1',
+    );
+    expect(ApiEndpoints.completeStockCount('c1'), '/stock-counts/c1/complete');
+    expect(ApiEndpoints.cancelStockCount('c1'), '/stock-counts/c1/cancel');
+    expect(ApiEndpoints.customerLoyalty('u1'), '/loyalty/customers/u1');
+    expect(
+      ApiEndpoints.customerStoreCredit('u1'),
+      '/counter-returns/credit/customers/u1',
+    );
+    expect(ApiEndpoints.pickOrders, '/shelves/pick/orders');
+    expect(ApiEndpoints.pickList, '/shelves/pick/list');
+    expect(ApiEndpoints.reportNotFound, '/shelves/not-found');
+    expect(ApiEndpoints.dispatches, '/dispatches');
+    expect(ApiEndpoints.inventoryTransfers, '/inventory-transfers');
+    expect(ApiEndpoints.dayBook, '/daybook');
+    expect(ApiEndpoints.receipt('o1'), '/counter-sales/o1/receipt');
+  });
 }
