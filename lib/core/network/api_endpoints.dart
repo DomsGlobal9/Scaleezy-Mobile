@@ -92,4 +92,8 @@ abstract final class ApiEndpoints {
   // Scanning and catalogue options (products & scanner)
   static const search = '/search';
   static const catalogConfig = '/catalog/config';
+
+  // Dashboard: the website's money tiles and its low-stock list
+  static const reportsDashboardSummary = '/reports/dashboard-summary';
+  static const inventoryAlerts = '/inventory/alerts';
 }

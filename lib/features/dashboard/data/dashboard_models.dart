@@ -40,3 +40,81 @@ class DashboardSummary {
     ).map(TransactionItem.fromJson).toList(),
   );
 }
+
+/// GET /reports/dashboard-summary (report:financial): the website's money tiles. Stock figures
+/// are for the selected store; [companyWideValue] is the whole business, sent only when it says
+/// something new (a store is selected and the shop has more than one). The open PO value covers
+/// sent and part-received orders, not drafts.
+class MoneySummary {
+  final double inventoryValue;
+  final double? companyWideValue;
+
+  /// Pieces counted at ₹0 (nothing known) / at their selling price (no cost known).
+  final int unitsWithoutCost;
+  final int unitsValuedAtPrice;
+  final double openPoValue;
+
+  /// Low and out of stock, counted apart: low never includes the sold-out ones.
+  final int lowStockCount;
+  final int outOfStockCount;
+  final double deadStockValue;
+  final int activeProducts;
+
+  const MoneySummary({
+    required this.inventoryValue,
+    this.companyWideValue,
+    this.unitsWithoutCost = 0,
+    this.unitsValuedAtPrice = 0,
+    required this.openPoValue,
+    required this.lowStockCount,
+    this.outOfStockCount = 0,
+    required this.deadStockValue,
+    required this.activeProducts,
+  });
+
+  factory MoneySummary.fromJson(Map<String, dynamic> j) => MoneySummary(
+    inventoryValue: asMoney(j['inventoryValue']) ?? 0,
+    companyWideValue: asMoney(j['companyWideValue']),
+    unitsWithoutCost: asInt(j['unitsWithoutCost']),
+    unitsValuedAtPrice: asInt(j['unitsValuedAtPrice']),
+    openPoValue: asMoney(j['openPoValue']) ?? 0,
+    lowStockCount: asInt(j['lowStockCount']),
+    outOfStockCount: asInt(j['outOfStockCount']),
+    deadStockValue: asMoney(j['deadStockValue']) ?? 0,
+    activeProducts: asInt(j['activeProducts']),
+  );
+}
+
+/// One unresolved stock alert from GET /inventory/alerts -> data.alerts[], for the selected
+/// store. [type] is LOW_STOCK, OUT_OF_STOCK or another kind the home list ignores.
+class StockAlert {
+  final String id;
+  final String type;
+  final String variantId;
+  final String productTitle;
+  final String sku;
+  final int quantity;
+  final int reorderLevel;
+
+  const StockAlert({
+    required this.id,
+    required this.type,
+    required this.variantId,
+    required this.productTitle,
+    required this.sku,
+    required this.quantity,
+    required this.reorderLevel,
+  });
+
+  bool get isOutOfStock => quantity <= 0;
+
+  factory StockAlert.fromJson(Map<String, dynamic> j) => StockAlert(
+    id: asString(j['id']),
+    type: asString(j['type']),
+    variantId: asString(j['variantId']),
+    productTitle: asString(j['productTitle'] ?? j['variantName']),
+    sku: asString(j['sku']),
+    quantity: asInt(j['quantity']),
+    reorderLevel: asInt(j['reorderLevel']),
+  );
+}

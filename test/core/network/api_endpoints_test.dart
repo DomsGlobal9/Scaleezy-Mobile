@@ -71,5 +71,8 @@ void main() {
     expect(ApiEndpoints.receipt('o1'), '/counter-sales/o1/receipt');
     expect(ApiEndpoints.search, '/search');
     expect(ApiEndpoints.catalogConfig, '/catalog/config');
+
+    expect(ApiEndpoints.reportsDashboardSummary, '/reports/dashboard-summary');
+    expect(ApiEndpoints.inventoryAlerts, '/inventory/alerts');
   });
 }
