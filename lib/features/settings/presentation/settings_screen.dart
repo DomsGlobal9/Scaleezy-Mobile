@@ -1,16 +1,33 @@
 import 'package:flutter/material.dart';
 
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
-import 'package:scaleezy/core/shop/shop_repository.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
-import 'package:scaleezy/features/settings/data/account_repository.dart';
+import 'package:scaleezy/features/settings/presentation/view_models/password_view_model.dart';
+import 'package:scaleezy/features/settings/presentation/view_models/settings_view_model.dart';
 
-class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+class SettingsScreen extends StatefulWidget {
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final SettingsViewModel? viewModel;
+
+  const SettingsScreen({super.key, this.viewModel});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  late final SettingsViewModel _vm =
+      widget.viewModel ??
+      SettingsViewModel(SessionScope.read(context), ShopScope.read(context));
+
+  @override
+  void dispose() {
+    if (widget.viewModel == null) _vm.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,10 +53,7 @@ class SettingsScreen extends StatelessWidget {
                   context,
                   title: 'Your name',
                   initial: user?.name ?? '',
-                  save: (v) async {
-                    await AccountRepository().updateMyName(v);
-                    await session.restore(); // pick up the new name everywhere
-                  },
+                  save: _vm.saveName,
                 ),
               ),
               _tile(
@@ -87,19 +101,16 @@ class SettingsScreen extends StatelessWidget {
                     confirmLabel: 'Sign them out',
                   );
                   if (!ok || !context.mounted) return;
-                  try {
-                    await AccountRepository().signOutOtherDevices();
-                    if (context.mounted) {
-                      showMessage(
-                        context,
-                        'Signed out of every other device.',
-                        success: true,
-                      );
-                    }
-                  } on ApiException catch (e) {
-                    if (context.mounted) {
-                      showMessage(context, e.message, error: true);
-                    }
+                  final error = await _vm.signOutOtherDevices();
+                  if (!context.mounted) return;
+                  if (error == null) {
+                    showMessage(
+                      context,
+                      'Signed out of every other device.',
+                      success: true,
+                    );
+                  } else {
+                    showMessage(context, error, error: true);
                   }
                 },
               ),
@@ -115,12 +126,7 @@ class SettingsScreen extends StatelessWidget {
                         context,
                         title: 'Shop name',
                         initial: b.businessName ?? '',
-                        save: (v) async {
-                          await ShopRepository().updateShopName(
-                            v.isEmpty ? null : v,
-                          );
-                          await shop.load();
-                        },
+                        save: _vm.saveShopName,
                       )
                     : null,
               ),
@@ -135,13 +141,7 @@ class SettingsScreen extends StatelessWidget {
                         title: 'Shop phone',
                         initial: b.businessPhone ?? '',
                         keyboard: TextInputType.phone,
-                        save: (v) async {
-                          await ShopRepository().updateShopDetails(
-                            businessPhone: v.isEmpty ? null : v,
-                            businessAddress: b.businessAddress,
-                          );
-                          await shop.load();
-                        },
+                        save: _vm.saveShopPhone,
                       )
                     : null,
               ),
@@ -156,13 +156,7 @@ class SettingsScreen extends StatelessWidget {
                         title: 'Shop address',
                         initial: b.businessAddress ?? '',
                         lines: 3,
-                        save: (v) async {
-                          await ShopRepository().updateShopDetails(
-                            businessAddress: v.isEmpty ? null : v,
-                            businessPhone: b.businessPhone,
-                          );
-                          await shop.load();
-                        },
+                        save: _vm.saveShopAddress,
                       )
                     : null,
               ),
@@ -182,12 +176,7 @@ class SettingsScreen extends StatelessWidget {
               ),
             ]).entrance(2),
             _section('App', [
-              _tile(
-                context,
-                Icons.cloud_outlined,
-                'Server',
-                Uri.parse(kApiBaseUrl).host,
-              ),
+              _tile(context, Icons.cloud_outlined, 'Server', _vm.serverHost),
             ]).entrance(3),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
@@ -200,7 +189,7 @@ class SettingsScreen extends StatelessWidget {
                         'You will need your email and password to come back in.',
                     confirmLabel: 'Sign out',
                   )) {
-                    await session.logout();
+                    await _vm.signOut();
                     if (context.mounted) {
                       Navigator.of(context).popUntil((r) => r.isFirst);
                     }
@@ -299,10 +288,12 @@ class SettingsScreen extends StatelessWidget {
     BuildContext context, {
     required String title,
     required String initial,
-    required Future<void> Function(String) save,
+    required Future<String?> Function(String) save,
     TextInputType keyboard = TextInputType.text,
     int lines = 1,
   }) async {
+    // Not disposed: the sheet still builds the field while it animates closed after the
+    // await below returns; nothing else holds it, so it is simply collected.
     final controller = TextEditingController(text: initial);
     await showModalBottomSheet(
       context: context,
@@ -312,8 +303,7 @@ class SettingsScreen extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       builder: (ctx) {
-        var busy = false;
-        String? error;
+        String? error; // the last save's message, shown under the field
         return StatefulBuilder(
           builder: (ctx, set) => Padding(
             padding: EdgeInsets.fromLTRB(
@@ -360,47 +350,44 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 14),
-                FilledButton(
-                  onPressed: busy
-                      ? null
-                      : () async {
-                          set(() {
-                            busy = true;
-                            error = null;
-                          });
-                          try {
-                            await save(controller.text.trim());
+                ListenableBuilder(
+                  listenable: _vm,
+                  builder: (_, _) => FilledButton(
+                    onPressed: _vm.saving
+                        ? null
+                        : () async {
+                            set(() => error = null);
+                            final message = await save(controller.text.trim());
+                            if (message != null) {
+                              if (ctx.mounted) set(() => error = message);
+                              return;
+                            }
                             if (ctx.mounted) Navigator.of(ctx).pop();
                             if (context.mounted) {
                               showMessage(context, 'Saved.', success: true);
                             }
-                          } on ApiException catch (e) {
-                            set(() {
-                              busy = false;
-                              error = e.message;
-                            });
-                          }
-                        },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.accentGold,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                          },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.accentGold,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
-                  ),
-                  child: busy
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
+                    child: _vm.saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Save',
+                            style: TextStyle(fontWeight: FontWeight.w800),
                           ),
-                        )
-                      : const Text(
-                          'Save',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
+                  ),
                 ),
               ],
             ),
@@ -408,7 +395,6 @@ class SettingsScreen extends StatelessWidget {
         );
       },
     );
-    controller.dispose();
   }
 }
 
@@ -420,15 +406,15 @@ class _PasswordSheet extends StatefulWidget {
 }
 
 class _PasswordSheetState extends State<_PasswordSheet> {
+  final _vm = PasswordViewModel();
   final _current = TextEditingController();
   final _next = TextEditingController();
   final _again = TextEditingController();
-  bool _busy = false;
   bool _show = false;
-  String? _error;
 
   @override
   void dispose() {
+    _vm.dispose();
     _current.dispose();
     _next.dispose();
     _again.dispose();
@@ -436,35 +422,14 @@ class _PasswordSheetState extends State<_PasswordSheet> {
   }
 
   Future<void> _save() async {
-    if (_next.text.length < 8) {
-      return setState(
-        () => _error = 'The new password must be at least 8 characters.',
-      );
-    }
-    if (_next.text != _again.text) {
-      return setState(() => _error = 'The two new passwords do not match.');
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await AccountRepository().changeMyPassword(_current.text, _next.text);
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      showMessage(
-        context,
-        'Password changed. Other devices have been signed out.',
-        success: true,
-      );
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = e.message;
-        });
-      }
-    }
+    final error = await _vm.change(_current.text, _next.text, _again.text);
+    if (error != null || !mounted) return;
+    Navigator.of(context).pop();
+    showMessage(
+      context,
+      'Password changed. Other devices have been signed out.',
+      success: true,
+    );
   }
 
   Widget _field(TextEditingController c, String label) => Padding(
@@ -486,6 +451,14 @@ class _PasswordSheetState extends State<_PasswordSheet> {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildSheet(),
+    );
+  }
+
+  Widget _buildSheet() {
+    final error = _vm.error;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         20,
@@ -519,11 +492,11 @@ class _PasswordSheetState extends State<_PasswordSheet> {
           _field(_current, 'Current password'),
           _field(_next, 'New password'),
           _field(_again, 'New password again'),
-          if (_error != null)
+          if (error != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Text(
-                _error!,
+                error,
                 style: const TextStyle(
                   color: AppColors.accentDanger,
                   fontWeight: FontWeight.w600,
@@ -531,7 +504,7 @@ class _PasswordSheetState extends State<_PasswordSheet> {
               ),
             ),
           FilledButton(
-            onPressed: _busy ? null : _save,
+            onPressed: _vm.busy ? null : _save,
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.accentGold,
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -539,7 +512,7 @@ class _PasswordSheetState extends State<_PasswordSheet> {
                 borderRadius: BorderRadius.circular(14),
               ),
             ),
-            child: _busy
+            child: _vm.busy
                 ? const SizedBox(
                     width: 20,
                     height: 20,
