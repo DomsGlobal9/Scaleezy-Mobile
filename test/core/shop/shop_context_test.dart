@@ -62,7 +62,11 @@ class _Session extends AuthSession {
 }
 
 /// Lets the store's file writes and a reload finish.
-Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 50));
+// Lets the fake server answer, then waits for the store file itself, not a guessed delay.
+Future<void> settle(ShopContext shop) async {
+  await Future<void>.delayed(const Duration(milliseconds: 50));
+  await shop.pendingSave;
+}
 
 void main() {
   late Directory dir;
@@ -106,7 +110,7 @@ void main() {
     expect(shop.locations.map((l) => l.id), ['L1', 'L2']);
     await server.api.get('/anything');
     expect(server.headers.last, 'L2');
-    await settle();
+    await settle(shop);
     expect(saved().readAsStringSync(), 'L2');
   });
 
@@ -127,7 +131,7 @@ void main() {
     expect(shop.revision, revision + 1);
     shop.selectLocation(shop.locations.last);
     expect(shop.revision, revision + 1);
-    await settle();
+    await settle(shop);
     expect(saved().readAsStringSync(), 'L2');
 
     // A new start picks it up again.
@@ -146,9 +150,9 @@ void main() {
       shop.follow(session);
 
       session.become(AuthStatus.signedIn);
-      await settle();
+      await settle(shop);
       shop.selectLocation(shop.locations.last);
-      await settle();
+      await settle(shop);
 
       session.become(AuthStatus.signedOut); // expired
       expect(shop.selectedLocation, isNull);
@@ -157,12 +161,12 @@ void main() {
       expect(saved().existsSync(), isTrue);
 
       session.become(AuthStatus.signedIn);
-      await settle();
+      await settle(shop);
       expect(shop.selectedLocation?.id, 'L2');
 
       session.onPurpose = true;
       session.become(AuthStatus.signedOut);
-      await settle();
+      await settle(shop);
       await server.api.get('/anything');
       expect(server.headers.last, isNull);
       expect(saved().existsSync(), isFalse);

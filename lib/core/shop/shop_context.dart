@@ -96,6 +96,10 @@ class ShopContext extends ChangeNotifier {
 
   Future<void> _saving = Future.value();
 
+  /// Completes once every save started so far has reached the disk.
+  @visibleForTesting
+  Future<void> get pendingSave => _saving;
+
   // Saves run one after another, so a quick second switch can't be overwritten by the first.
   Future<void> _save(String? id) => _saving = _saving.then((_) => _write(id));
 
