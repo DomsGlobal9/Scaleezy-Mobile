@@ -2,20 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:scaleezy/app/app_routes.dart';
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/money.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/inventory/presentation/widgets/stock_movement_dialog.dart';
 import 'package:scaleezy/features/products/data/product_models.dart';
-import 'package:scaleezy/features/products/data/product_repository.dart';
+import 'package:scaleezy/features/scanner/presentation/view_models/scanner_view_model.dart';
 
 class ScannerScreen extends StatefulWidget {
   /// False while another tab is showing, so the camera is not left running behind it.
   final bool active;
 
-  const ScannerScreen({super.key, this.active = true});
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final ScannerViewModel? viewModel;
+
+  const ScannerScreen({super.key, this.active = true, this.viewModel});
 
   @override
   State<ScannerScreen> createState() => _ScannerScreenState();
@@ -23,7 +25,7 @@ class ScannerScreen extends StatefulWidget {
 
 class _ScannerScreenState extends State<ScannerScreen>
     with SingleTickerProviderStateMixin {
-  final _repo = ProductRepository();
+  late final ScannerViewModel _vm = widget.viewModel ?? ScannerViewModel();
   final _codeController = TextEditingController();
   final MobileScannerController _camera = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
@@ -33,14 +35,6 @@ class _ScannerScreenState extends State<ScannerScreen>
   late AnimationController _animController;
   late Animation<double> _laserAnimation;
   bool _isTorchOn = false;
-
-  VariantItem? _scannedVariant;
-
-  /// What was scanned this session, newest first -- tap to bring one back.
-  final List<VariantItem> _recent = [];
-  String? _lastCode;
-  bool _lookingUp = false;
-  String? _error;
 
   @override
   void initState() {
@@ -69,6 +63,7 @@ class _ScannerScreenState extends State<ScannerScreen>
     _animController.dispose();
     _camera.dispose();
     _codeController.dispose();
+    if (widget.viewModel == null) _vm.dispose();
     super.dispose();
   }
 
@@ -92,54 +87,18 @@ class _ScannerScreenState extends State<ScannerScreen>
         .map((b) => b.rawValue)
         .whereType<String>()
         .firstOrNull;
-    if (code == null || code.trim().isEmpty || _lookingUp) return;
-    // Holding a tag in view keeps reporting it; one lookup per tag is enough.
-    if (code == _lastCode && _scannedVariant != null) return;
+    if (code == null || !_vm.wantsScan(code)) return;
     _lookup(code);
   }
 
-  /// The decoded text goes to /variants/search as `q`; a barcode or SKU matches exactly.
   Future<void> _lookup(String code) async {
-    final q = code.trim();
-    if (q.isEmpty) return;
-    setState(() {
-      _lookingUp = true;
-      _error = null;
-      _lastCode = q;
-    });
-    try {
-      final matches = await _repo.searchVariants(q, limit: 10);
-      if (!mounted) return;
-      VariantItem? picked;
-      if (matches.length == 1) {
-        picked = matches.first;
-      } else if (matches.isNotEmpty) {
-        picked = await _chooseMatch(matches);
-      }
-      if (picked != null) {
-        HapticFeedback.mediumImpact();
-      } else if (matches.isEmpty) {
-        HapticFeedback.heavyImpact();
-      }
-      setState(() {
-        _lookingUp = false;
-        if (picked != null) {
-          _scannedVariant = picked;
-          _recent
-            ..removeWhere((r) => r.id == picked!.id)
-            ..insert(0, picked);
-          if (_recent.length > 8) _recent.removeLast();
-        } else if (matches.isEmpty) {
-          _scannedVariant = null;
-          _error = 'No product matches "$q".';
-        }
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _lookingUp = false;
-        _error = e.message;
-      });
+    final before = _vm.scanned;
+    final error = await _vm.lookup(code, choose: _chooseMatch);
+    if (!mounted || error != null) return;
+    if (_vm.error != null) {
+      HapticFeedback.heavyImpact(); // nothing matched
+    } else if (!identical(_vm.scanned, before)) {
+      HapticFeedback.mediumImpact(); // a piece was found (not a dismissed "Which one?")
     }
   }
 
@@ -186,7 +145,7 @@ class _ScannerScreenState extends State<ScannerScreen>
   }
 
   Future<void> _move(bool isStockIn) async {
-    final v = _scannedVariant;
+    final v = _vm.scanned;
     if (v == null) return;
     final done = await showStockMovement(
       context,
@@ -204,6 +163,14 @@ class _ScannerScreenState extends State<ScannerScreen>
     final canReceive = session.can('inventory:receive');
     final canAdjust = session.can('inventory:adjust');
 
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) =>
+          _buildScreen(canReceive: canReceive, canAdjust: canAdjust),
+    );
+  }
+
+  Widget _buildScreen({required bool canReceive, required bool canAdjust}) {
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
@@ -397,7 +364,7 @@ class _ScannerScreenState extends State<ScannerScreen>
                         },
                       ),
 
-                      if (_lookingUp)
+                      if (_vm.lookingUp)
                         Container(
                           color: Colors.black45,
                           child: const Center(
@@ -485,7 +452,7 @@ class _ScannerScreenState extends State<ScannerScreen>
                   ),
                   child: KeyedSubtree(
                     key: ValueKey(
-                      '${_scannedVariant?.id}-${_scannedVariant?.quantity}-$_error',
+                      '${_vm.scanned?.id}-${_vm.scanned?.quantity}-${_vm.error}',
                     ),
                     child: LayoutBuilder(
                       builder: (_, box) => SingleChildScrollView(
@@ -511,27 +478,29 @@ class _ScannerScreenState extends State<ScannerScreen>
   }
 
   Widget _buildResult({required bool canReceive, required bool canAdjust}) {
-    final v = _scannedVariant;
+    final v = _vm.scanned;
+    final error = _vm.error;
+    final recent = _vm.recent;
     if (v == null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              _error != null
+              error != null
                   ? Icons.search_off_rounded
                   : Icons.qr_code_2_rounded,
               size: 44,
-              color: _error != null
+              color: error != null
                   ? AppColors.accentDanger
                   : AppColors.textMuted,
             ),
             const SizedBox(height: 10),
             Text(
-              _error ?? 'Scan a garment tag to see its stock',
+              error ?? 'Scan a garment tag to see its stock',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _error != null
+                color: error != null
                     ? AppColors.accentDanger
                     : AppColors.textSecondary,
                 fontWeight: FontWeight.w600,
@@ -595,10 +564,10 @@ class _ScannerScreenState extends State<ScannerScreen>
               ),
           ],
         ),
-        if (_error != null) ...[
+        if (error != null) ...[
           const SizedBox(height: 6),
           Text(
-            _error!,
+            error,
             style: const TextStyle(
               fontSize: 11,
               color: AppColors.accentDanger,
@@ -706,13 +675,13 @@ class _ScannerScreenState extends State<ScannerScreen>
               ),
             ),
           ),
-        if (_recent.length > 1) ...[
+        if (recent.length > 1) ...[
           const SizedBox(height: 10),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final r in _recent.skip(1))
+              for (final r in recent.skip(1))
                 ActionChip(
                   label: Text(
                     r.sku,

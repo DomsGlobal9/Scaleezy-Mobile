@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
-import 'package:scaleezy/features/inventory/data/inventory_repository.dart';
+import 'package:scaleezy/features/inventory/presentation/view_models/stock_movement_view_model.dart';
 import 'package:scaleezy/features/products/data/product_models.dart';
 
 /// Opens the movement dialog for [variant] and sends it to /inventory/stock-in or stock-out.
@@ -12,7 +11,6 @@ Future<bool> showStockMovement(
   required String title,
   required bool isStockIn,
 }) async {
-  final repo = InventoryRepository();
   final done = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
@@ -20,15 +18,8 @@ Future<bool> showStockMovement(
       title: title,
       sku: variant.sku,
       currentStock: '${variant.quantity}',
+      variantId: variant.id,
       isStockIn: isStockIn,
-      onConfirm: (qty, reason, cost) => isStockIn
-          ? repo.stockIn(
-              variantId: variant.id,
-              quantity: qty,
-              reason: reason,
-              unitCost: cost,
-            )
-          : repo.stockOut(variantId: variant.id, quantity: qty, reason: reason),
     ),
   );
   if (done == true && context.mounted) {
@@ -52,20 +43,21 @@ class StockMovementDialog extends StatefulWidget {
   final String title;
   final String sku;
   final String currentStock;
+  final String variantId;
   final bool isStockIn;
 
-  /// Runs the movement. Throwing [ApiException] keeps the dialog open with the server's message;
-  /// returning closes it with `true`.
-  final Future<void> Function(int qty, String reason, double? unitCost)
-  onConfirm;
+  /// Tests pass their own; otherwise the dialog makes and owns one. A server error keeps the
+  /// dialog open with its message; success closes it with `true`.
+  final StockMovementViewModel? viewModel;
 
   const StockMovementDialog({
     super.key,
     required this.title,
     required this.sku,
     required this.currentStock,
+    required this.variantId,
     this.isStockIn = true,
-    required this.onConfirm,
+    this.viewModel,
   });
 
   @override
@@ -73,89 +65,47 @@ class StockMovementDialog extends StatefulWidget {
 }
 
 class _StockMovementDialogState extends State<StockMovementDialog> {
-  final TextEditingController _qtyController = TextEditingController(text: '1');
-  final TextEditingController _costController = TextEditingController();
-  late String _selectedReason;
-  bool _busy = false;
-  String? _error;
-
-  final List<String> _stockInReasons = [
-    // The same five the web app's Receive Stock offers, in its order.
-    'PURCHASE',
-    'RETURN',
-    'INITIAL_STOCK',
-    'SUPPLIER_DELIVERY',
-    'PURCHASE_RECEIPT',
-  ];
-
-  // The only reasons the server takes for stock off by hand; sales remove stock themselves.
-  final List<String> _stockOutReasons = [
-    'DAMAGE',
-    'SAMPLE',
-    'RETURN_TO_VENDOR',
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedReason = widget.isStockIn
-        ? _stockInReasons.first
-        : _stockOutReasons.first;
-  }
+  late final StockMovementViewModel _vm =
+      widget.viewModel ??
+      StockMovementViewModel(
+        variantId: widget.variantId,
+        isStockIn: widget.isStockIn,
+      );
+  late final TextEditingController _qtyController = TextEditingController(
+    text: _vm.quantity,
+  );
+  late final TextEditingController _costController = TextEditingController(
+    text: _vm.cost,
+  );
 
   @override
   void dispose() {
     _qtyController.dispose();
     _costController.dispose();
+    if (widget.viewModel == null) _vm.dispose();
     super.dispose();
   }
 
   Future<void> _confirm() async {
-    final qty = int.tryParse(_qtyController.text.trim());
-    if (qty == null || qty <= 0) {
-      setState(
-        () => _error = 'Enter how many pieces, as a whole number above zero.',
-      );
-      return;
-    }
-    final costText = _costController.text.trim();
-    final cost = costText.isEmpty ? null : double.tryParse(costText);
-    if (costText.isNotEmpty && cost == null) {
-      setState(() => _error = 'That purchase cost is not a number.');
-      return;
-    }
-
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await widget.onConfirm(qty, _selectedReason, cost);
-      if (mounted) Navigator.of(context).pop(true);
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = e.message;
-        });
-      }
-    }
+    final error = await _vm.save();
+    if (error == null && mounted) Navigator.of(context).pop(true);
   }
 
-  void _addQty(int amount) {
-    final current = int.tryParse(_qtyController.text) ?? 0;
-    final next = (current + amount).clamp(1, 9999);
-    _qtyController.text = next.toString();
-    setState(() {});
-  }
+  void _addQty(int amount) => _qtyController.text = _vm.addQuantity(amount);
 
   @override
   Widget build(BuildContext context) {
-    final reasons = widget.isStockIn ? _stockInReasons : _stockOutReasons;
-    final primaryColor = widget.isStockIn
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildDialog(),
+    );
+  }
+
+  Widget _buildDialog() {
+    final primaryColor = _vm.isStockIn
         ? AppColors.accentSuccess
         : AppColors.accentDanger;
-    final primaryBg = widget.isStockIn
+    final primaryBg = _vm.isStockIn
         ? AppColors.accentSuccessLight
         : AppColors.accentDangerLight;
 
@@ -183,7 +133,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
-                        widget.isStockIn
+                        _vm.isStockIn
                             ? Icons.add_box_rounded
                             : Icons.indeterminate_check_box_rounded,
                         color: primaryColor,
@@ -192,7 +142,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      widget.isStockIn ? 'Receive Stock' : 'Issue Stock',
+                      _vm.isStockIn ? 'Receive Stock' : 'Issue Stock',
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
@@ -208,7 +158,9 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                     color: AppColors.textSecondary,
                     size: 20,
                   ),
-                  onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                  onPressed: _vm.busy
+                      ? null
+                      : () => Navigator.of(context).pop(),
                   visualDensity: VisualDensity.compact,
                 ),
               ],
@@ -287,6 +239,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
             const SizedBox(height: 6),
             TextField(
               controller: _qtyController,
+              onChanged: (text) => _vm.quantity = text,
               keyboardType: TextInputType.number,
               style: const TextStyle(
                 color: AppColors.textPrimary,
@@ -330,7 +283,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                 _buildQtyPill('+25', 25),
               ],
             ),
-            if (widget.isStockIn) ...[
+            if (_vm.isStockIn) ...[
               const SizedBox(height: 14),
               const Text(
                 'Unit Purchase Cost (₹) for WAC valuation',
@@ -343,6 +296,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
               const SizedBox(height: 6),
               TextField(
                 controller: _costController,
+                onChanged: (text) => _vm.cost = text,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -397,7 +351,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
-                  value: _selectedReason,
+                  value: _vm.reason,
                   isExpanded: true,
                   dropdownColor: AppColors.bgCard,
                   style: const TextStyle(
@@ -405,19 +359,19 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
-                  items: reasons.map((r) {
+                  items: _vm.reasons.map((r) {
                     return DropdownMenuItem(
                       value: r,
                       child: Text(r.replaceAll('_', ' ')),
                     );
                   }).toList(),
                   onChanged: (val) {
-                    if (val != null) setState(() => _selectedReason = val);
+                    if (val != null) _vm.reason = val;
                   },
                 ),
               ),
             ),
-            if (_error != null) ...[
+            if (_vm.error != null) ...[
               const SizedBox(height: 14),
               Container(
                 width: double.infinity,
@@ -427,7 +381,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  _error!,
+                  _vm.error!,
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -441,7 +395,9 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                    onPressed: _vm.busy
+                        ? null
+                        : () => Navigator.of(context).pop(),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.textSecondary,
                       side: const BorderSide(color: AppColors.borderLight),
@@ -459,7 +415,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: _busy ? null : _confirm,
+                    onPressed: _vm.busy ? null : _confirm,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
@@ -469,7 +425,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    child: _busy
+                    child: _vm.busy
                         ? const SizedBox(
                             width: 18,
                             height: 18,
@@ -479,7 +435,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                             ),
                           )
                         : Text(
-                            widget.isStockIn ? 'Receive Stock' : 'Issue Stock',
+                            _vm.isStockIn ? 'Receive Stock' : 'Issue Stock',
                             style: const TextStyle(fontWeight: FontWeight.w800),
                           ),
                   ),
