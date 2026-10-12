@@ -34,11 +34,13 @@ class ReceiptViewModel extends ViewModel {
   static final _when = DateFormat('d MMM yyyy, h:mm a');
 
   Receipt? _receipt;
-  String? _error;
+  Object? _error;
 
   /// Null while loading and after a failure.
   Receipt? get receipt => _receipt;
-  String? get error => _error;
+
+  /// The failure as caught, so a 403 can show no-access rather than "try again".
+  Object? get error => _error;
 
   Future<void> load() async {
     _error = null;
@@ -47,7 +49,7 @@ class ReceiptViewModel extends ViewModel {
       _receipt = await _repo.getReceipt(orderId);
     } catch (e) {
       if (disposed) return;
-      _error = e.toString();
+      _error = e;
     }
     notifyListeners();
   }

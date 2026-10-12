@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scaleezy/core/network/api_client.dart';
+import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/features/orders/data/receipt_models.dart';
 import 'package:scaleezy/features/orders/presentation/receipt_screen.dart';
 import 'package:scaleezy/features/orders/presentation/view_models/receipt_view_model.dart';
@@ -130,7 +131,7 @@ void main() {
     );
     await vm.load();
     expect(vm.receipt, isNull);
-    expect(vm.error, 'Order not found');
+    expect((vm.error! as ApiException).message, 'Order not found');
   });
 
   testWidgets('receipt screen shows the paper and a WhatsApp share', (
@@ -181,4 +182,38 @@ void main() {
     expect(find.text('Share on WhatsApp'), findsNothing);
     expect(find.text('DUPLICATE'), findsNothing);
   });
+
+  for (final theme in [AppTheme.light, AppTheme.dark]) {
+    testWidgets(
+      'receipt draws in ${theme.brightness.name}, paper stays white',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 2400);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final vm = ReceiptViewModel(
+          'o1',
+          FakeOrderRepository(
+            receipt: (_) async => Receipt.fromJson(receiptJson()),
+          ),
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme,
+            home: ReceiptScreen(orderId: 'o1', viewModel: vm),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final paper = tester.widget<Container>(
+          find
+              .ancestor(
+                of: find.text('DUPLICATE'),
+                matching: find.byType(Container),
+              )
+              .first,
+        );
+        expect((paper.decoration! as BoxDecoration).color, Colors.white);
+      },
+    );
+  }
 }

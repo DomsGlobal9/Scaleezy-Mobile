@@ -4,7 +4,7 @@ import 'package:scaleezy/core/view_model/view_model.dart';
 import 'package:scaleezy/features/day_book/data/day_book_models.dart';
 import 'package:scaleezy/features/day_book/data/day_book_repository.dart';
 
-/// One business day of the day book, for one store or all of them.
+/// One business day of the day book, for the store chosen in the app.
 class DayBookViewModel extends ViewModel {
   DayBookViewModel([DayBookRepository? repo])
     : _repo = repo ?? DayBookRepository();
@@ -16,12 +16,14 @@ class DayBookViewModel extends ViewModel {
   DateTime? _day;
   String? _locationId;
   DayBook? _book;
-  String? _error;
+  Object? _error;
   int _req = 0;
 
   /// Null while a day loads, so one day's figures never sit under another day's date.
   DayBook? get book => _book;
-  String? get error => _error;
+
+  /// The failure as caught, so a 403 can show no-access rather than "try again".
+  Object? get error => _error;
 
   /// The day asked for, or the day the server answered for; null before today first loads.
   DateTime? get day => _day ?? _book?.day;
@@ -42,12 +44,12 @@ class DayBookViewModel extends ViewModel {
       _book = book;
     } catch (e) {
       if (disposed || id != _req) return;
-      _error = e.toString();
+      _error = e;
     }
     notifyListeners();
   }
 
-  /// The store chosen in the app; null for every store together.
+  /// The store chosen in the app; null only before the store list has loaded.
   Future<void> setLocation(String? locationId) {
     _locationId = locationId;
     _book = null;

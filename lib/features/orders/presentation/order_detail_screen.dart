@@ -6,10 +6,13 @@ import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/money.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
+import 'package:scaleezy/features/orders/data/order_models.dart';
+import 'package:scaleezy/features/orders/data/receipt_models.dart';
 import 'package:scaleezy/features/orders/presentation/orders_screen.dart';
 import 'package:scaleezy/features/orders/presentation/view_models/order_details_view_model.dart';
 
-/// One order: who, when, every line and the totals, with the receipt for a counter bill.
+/// One order, laid out as the website's order page: who and when, the lines, the summary and the
+/// payments, with the receipt for a counter bill. Read only.
 class OrderDetailScreen extends StatefulWidget {
   final String orderId;
 
@@ -26,6 +29,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   late final OrderDetailsViewModel _vm =
       widget.viewModel ?? OrderDetailsViewModel(widget.orderId);
   final _dateFormat = DateFormat('d MMM yyyy, h:mm a');
+  final _paidAt = DateFormat('d MMM, h:mm a');
 
   @override
   void initState() {
@@ -42,157 +46,281 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgCard,
       body: SafeArea(
-        child: Column(
-          children: [
-            const PageHeader(title: 'Order'),
-            Expanded(
-              child: ListenableBuilder(
-                listenable: _vm,
-                builder: (context, _) => _buildContent(),
-              ),
-            ),
-          ],
+        child: ListenableBuilder(
+          listenable: _vm,
+          builder: (context, _) {
+            final d = _vm.detail;
+            return Column(
+              children: [
+                PageHeader(
+                  title: d == null ? 'Order' : 'Order ${d.summary.orderNumber}',
+                ),
+                Expanded(child: _buildContent()),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
   Widget _buildContent() {
-    if (_vm.error != null) {
-      return ErrorView(message: _vm.error!, onRetry: _vm.load);
+    final error = _vm.error;
+    if (error != null) {
+      return ErrorView.fromError(error, what: 'the order', onRetry: _vm.load);
     }
     final d = _vm.detail;
     if (d == null) {
       return const LoadingView(message: 'Loading the order…');
     }
-    Widget total(String label, double amount, {bool bold = false}) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
-              color: bold ? null : AppColors.textSecondary,
-            ),
-          ),
-          const Spacer(),
-          Text(
-            amount < 0 ? '−${formatRupees(-amount)}' : formatRupees(amount),
-            style: TextStyle(
-              fontWeight: bold ? FontWeight.w900 : FontWeight.w700,
-              fontSize: bold ? 18 : 13,
-            ),
-          ),
-        ],
-      ),
-    );
+    final o = d.summary;
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                d.summary.orderNumber,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  fontFamily: 'monospace',
-                ),
-              ),
-            ),
-            orderStatusChip(d.summary.status),
-          ],
+        Align(
+          alignment: Alignment.centerLeft,
+          child: orderStatusPill(o.status, large: true),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         Text(
           [
-            d.summary.customerName,
-            if (d.summary.customerPhone.isNotEmpty) d.summary.customerPhone,
-          ].join(' • '),
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-        ),
-        Text(
-          _dateFormat.format(d.summary.date),
-          style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+            'Customer: ${o.customerName}',
+            if (o.customerPhone.isNotEmpty) o.customerPhone,
+            'Created: ${_dateFormat.format(o.date)}',
+            if (o.atCounter) 'Sold at the counter',
+            ?o.locationName,
+            if (o.createdByName != null) 'By ${o.createdByName}',
+          ].join(' · '),
+          style: type.bodyMedium!.copyWith(color: c.textSecondary),
         ),
         // As on the web: only counter bills have a receipt. Its permission, sales_order:view,
         // is the one this order was just loaded with.
-        if (d.summary.atCounter) ...[
+        if (o.atCounter) ...[
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerLeft,
             child: OutlinedButton.icon(
-              onPressed: () => AppRoutes.receipt(context, d.summary.id),
+              onPressed: () => AppRoutes.receipt(context, o.id),
               icon: const Icon(Icons.receipt_long_rounded, size: 18),
               label: const Text('Receipt'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.accentGold,
-                side: const BorderSide(color: AppColors.accentGoldBorder),
-              ),
             ),
           ),
         ],
-        const SizedBox(height: 18),
-        for (final (i, l) in d.lines.indexed)
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.bgSurface,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l.title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
-                        ),
+        const SizedBox(height: 16),
+        _lines(d),
+        const SizedBox(height: 16),
+        _summary(d),
+        if (o.atCounter || d.payments.isNotEmpty || o.writtenOff > 0) ...[
+          const SizedBox(height: 16),
+          _payments(d),
+        ],
+      ],
+    );
+  }
+
+  Widget _card(String title, List<Widget> children, {Widget? trailing}) {
+    final type = Theme.of(context).textTheme;
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(title, style: type.titleMedium)),
+              ?trailing,
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _lines(OrderDetail d) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    final sent = d.summary.status != 'DRAFT';
+    return _card('Line items', [
+      if (d.lines.isEmpty) Text('No items added yet.', style: type.bodySmall),
+      for (final (i, l) in d.lines.indexed)
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            border: i == 0 ? null : Border(top: BorderSide(color: c.border)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(l.title, style: type.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      [
+                        l.sku,
+                        if (l.colorName.isNotEmpty) l.colorName,
+                        if (l.size.isNotEmpty) 'Size ${l.size}',
+                      ].join(' · '),
+                      style: type.bodySmall,
+                    ),
+                    const SizedBox(height: 2),
+                    Text.rich(
+                      TextSpan(
+                        style: type.labelMedium!.copyWith(color: c.textMuted),
+                        children: [
+                          TextSpan(
+                            text:
+                                '${l.quantity} × ${formatRupees(l.unitPrice)}',
+                          ),
+                          // The website's RESERVED and DISPATCHED columns.
+                          if (sent && l.heldQty > 0)
+                            TextSpan(
+                              text: ' · ${l.heldQty} held',
+                              style: TextStyle(color: c.warning),
+                            ),
+                          if (sent && l.fulfilledQty > 0)
+                            TextSpan(
+                              text: ' · ${l.fulfilledQty} sent',
+                              style: TextStyle(color: c.success),
+                            ),
+                        ],
                       ),
-                      Text(
-                        [
-                          l.sku,
-                          if (l.colorName.isNotEmpty) l.colorName,
-                          if (l.size.isNotEmpty) 'Size ${l.size}',
-                        ].join(' • '),
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      Text(
-                        '${l.quantity} × ${formatRupees(l.unitPrice)}${l.fulfilledQty > 0 ? '  •  ${l.fulfilledQty} sent' : ''}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Text(
-                  formatRupees(l.totalPrice),
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-              ],
+              ),
+              const SizedBox(width: 10),
+              Text(formatRupees(l.totalPrice), style: type.titleSmall),
+            ],
+          ),
+        ).entrance(i),
+    ]);
+  }
+
+  Widget _summary(OrderDetail d) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    Widget row(String label, String amount) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: type.bodyMedium!.copyWith(color: c.textSecondary),
             ),
-          ).entrance(i),
-        const Divider(height: 26),
-        total('Subtotal', d.subtotal),
-        if (d.discountAmount > 0) total('Discount', -d.discountAmount),
-        if (d.taxAmount > 0) total('Tax', d.taxAmount),
-        if (d.shippingAmount > 0) total('Shipping', d.shippingAmount),
-        const SizedBox(height: 4),
-        total('Total', d.summary.totalAmount, bold: true),
+          ),
+          Text(
+            amount,
+            style: type.bodyMedium!.copyWith(color: c.textSecondary),
+          ),
+        ],
+      ),
+    );
+    final count = d.lines.length;
+    return _card('Summary', [
+      row(
+        'Subtotal ($count ${count == 1 ? 'item' : 'items'})',
+        formatRupees(d.subtotal),
+      ),
+      row('Discount', '-${formatRupees(d.discountAmount)}'),
+      // "Included", not "+": these prices already contain the tax.
+      row(
+        'Tax${d.taxAmount > 0 ? ' (included)' : ''}',
+        formatRupees(d.taxAmount),
+      ),
+      row('Shipping', '+${formatRupees(d.shippingAmount)}'),
+      Container(
+        padding: const EdgeInsets.only(top: 12),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: c.border)),
+        ),
+        child: Row(
+          children: [
+            Expanded(child: Text('Grand total', style: type.titleLarge)),
+            Text(formatRupees(d.summary.totalAmount), style: type.titleLarge),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _payments(OrderDetail d) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    final o = d.summary;
+    final (label, colour) = o.due > 0
+        ? ('${formatRupees(o.due)} due', c.warning)
+        : o.paymentStatus == 'REFUNDED'
+        ? ('Refunded', c.neutral)
+        : o.paymentStatus == 'WRITTEN_OFF'
+        ? ('Written off', c.danger)
+        : ('Paid', c.success);
+    Widget row(String title, String sub, String amount, {Color? colour}) =>
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: c.border)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: type.labelLarge!.copyWith(color: colour),
+                    ),
+                    if (sub.isNotEmpty)
+                      Text(
+                        sub,
+                        style: type.labelMedium!.copyWith(color: c.textMuted),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(amount, style: type.titleSmall!.copyWith(color: colour)),
+            ],
+          ),
+        );
+    return _card(
+      'Payments',
+      trailing: Text(label, style: type.labelLarge!.copyWith(color: colour)),
+      [
+        // Udhaar written off at the POS till: not money, so it is not a payment row.
+        if (o.writtenOff > 0)
+          row(
+            'Written off',
+            'On the POS till, no money received',
+            formatRupees(o.writtenOff),
+            colour: c.danger,
+          ),
+        if (d.payments.isEmpty)
+          Text('No payment recorded.', style: type.bodySmall),
+        for (final p in d.payments)
+          row(
+            [
+              if (p.kind == 'REFUND') 'Refund · ',
+              paymentMethodLabel(p.method),
+              if (p.reference != null) ' · ${p.reference}',
+            ].join(),
+            [
+              _paidAt.format(p.receivedAt),
+              ?p.receivedBy,
+              if (p.changeGiven > 0)
+                'got ${formatRupees(p.cashReceived ?? 0)}, gave back ${formatRupees(p.changeGiven)}',
+            ].join(' · '),
+            '${p.kind == 'REFUND' ? '-' : ''}${formatRupees(p.amount)}',
+          ),
       ],
     );
   }

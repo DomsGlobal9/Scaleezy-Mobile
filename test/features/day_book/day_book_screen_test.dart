@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
+import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/features/day_book/presentation/day_book_screen.dart';
 import 'package:scaleezy/features/day_book/presentation/view_models/day_book_view_model.dart';
 
@@ -10,6 +11,7 @@ import 'day_book_fakes.dart';
 Future<FakeDayBookRepository> _pump(
   WidgetTester tester, {
   bool cost = true,
+  ThemeData? theme,
 }) async {
   tester.view.physicalSize = const Size(360, 6000);
   tester.view.devicePixelRatio = 1;
@@ -25,6 +27,7 @@ Future<FakeDayBookRepository> _pump(
     ShopScope(
       shop: ShopContext(offlineClient()),
       child: MaterialApp(
+        theme: theme ?? AppTheme.light,
         home: DayBookScreen(viewModel: DayBookViewModel(repo)),
       ),
     ),
@@ -41,7 +44,6 @@ void main() {
 
     expect(repo.calls, [(null, null)]);
     expect(find.text('Day book'), findsOneWidget);
-    expect(find.text('All stores'), findsOneWidget);
     expect(find.text('Monday, 12 October 2026'), findsOneWidget);
     expect(find.text('STILL RUNNING'), findsOneWidget);
 
@@ -88,4 +90,12 @@ void main() {
     expect(find.text('Profit'), findsNothing);
     expect(find.textContaining('Profit is worked out on'), findsNothing);
   });
+
+  for (final theme in [AppTheme.light, AppTheme.dark]) {
+    testWidgets('day book draws in ${theme.brightness.name}', (tester) async {
+      await _pump(tester, theme: theme);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Stock for the day'), findsOneWidget);
+    });
+  }
 }

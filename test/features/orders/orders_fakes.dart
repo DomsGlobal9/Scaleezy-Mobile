@@ -12,6 +12,8 @@ OrderItemSummary order(
   int pieces = 1,
   DateTime? date,
   bool atCounter = false,
+  String? sourceSystem,
+  Map<String, dynamic>? payment,
 }) => OrderItemSummary.fromJson({
   'id': id,
   'orderNumber': 'SO-$id',
@@ -23,6 +25,8 @@ OrderItemSummary order(
   ],
   'createdAt': (date ?? DateTime.now()).toIso8601String(),
   'atCounter': atCounter,
+  'sourceSystem': sourceSystem,
+  'payment': payment,
 });
 
 OrderDetail orderDetail(String id, {bool atCounter = false}) =>
@@ -195,7 +199,7 @@ Map<String, dynamic> receiptJson({
   },
 };
 
-/// Records each search sent and answers with [answer] / [detail] / [receipt].
+/// Records each search and "where from" sent and answers with [answer] / [detail] / [receipt].
 class FakeOrderRepository extends OrderRepository {
   FakeOrderRepository({this.answer, this.detail, this.receipt})
     : super(offlineClient());
@@ -204,10 +208,16 @@ class FakeOrderRepository extends OrderRepository {
   Future<OrderDetail> Function(String id)? detail;
   Future<Receipt> Function(String id)? receipt;
   final searches = <String?>[];
+  final sources = <String?>[];
 
   @override
-  Future<List<OrderItemSummary>> getOrders({String? status, String? search}) {
+  Future<List<OrderItemSummary>> getOrders({
+    String? status,
+    String? search,
+    String? source,
+  }) {
     searches.add(search);
+    sources.add(source);
     return answer!();
   }
 
