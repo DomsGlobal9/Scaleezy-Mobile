@@ -5,13 +5,14 @@ import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/money.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
+import 'package:scaleezy/core/widgets/status_pill.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/day_book/data/day_book_models.dart';
 import 'package:scaleezy/features/day_book/presentation/view_models/day_book_view_model.dart';
 import 'package:scaleezy/features/orders/data/receipt_models.dart';
 
 /// One business day, read only, laid out as the web's Day Book: the balance line, sales,
-/// money at the counter, then what came in and went out. Follows the store chosen in the app.
+/// money at the counter, then what came in and went out, for the store chosen in the app.
 class DayBookScreen extends StatefulWidget {
   /// Tests pass their own; otherwise the screen makes and owns one.
   final DayBookViewModel? viewModel;
@@ -82,29 +83,31 @@ class _DayBookScreenState extends State<DayBookScreen> {
     final error = _vm.error;
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppColors.accentGold,
           onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 32),
             children: [
-              PageHeader(title: 'Day book', subtitle: store ?? 'All stores'),
+              PageHeader(title: 'Day book', subtitle: store),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
                 child: _dayBar(book),
               ),
               if (book == null && error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 60),
-                  child: ErrorView(message: error, onRetry: _vm.load),
+                  child: ErrorView.fromError(
+                    error,
+                    what: 'the day',
+                    onRetry: _vm.load,
+                  ),
                 )
               else if (book == null)
                 for (final h in const [150.0, 190.0, 120.0])
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-                    child: Skeleton(height: h, radius: 20),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                    child: Skeleton(height: h, radius: 12),
                   )
               else
                 ..._sections(book),
@@ -117,6 +120,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
 
   Widget _dayBar(DayBook? book) {
     final day = _vm.day;
+    final c = context.colors;
     return SurfaceCard(
       padding: const EdgeInsets.all(6),
       child: Row(
@@ -134,44 +138,24 @@ class _DayBookScreenState extends State<DayBookScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.calendar_today_rounded,
                         size: 14,
-                        color: AppColors.textMuted,
+                        color: c.textMuted,
                       ),
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(
                           day == null ? 'Today' : _heading.format(day),
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                          ),
+                          style: Theme.of(context).textTheme.titleSmall,
                         ),
                       ),
                     ],
                   ),
                   if (book?.inProgress == true) ...[
                     const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.accentGoldLight,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        'STILL RUNNING',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.accentGold,
-                        ),
-                      ),
-                    ),
+                    const StatusPill('STILL RUNNING', Tone.gold),
                   ],
                 ],
               ),
@@ -188,6 +172,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
   }
 
   List<Widget> _sections(DayBook b) {
+    final c = context.colors;
     var i = 0;
     final money = b.taken.isNotEmpty || b.paidBack.isNotEmpty;
     return [
@@ -210,9 +195,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
             _stat(
               'Cash in the drawer from these',
               formatRupees(b.cashInDrawer),
-              color: b.cashInDrawer >= 0
-                  ? AppColors.accentSuccess
-                  : AppColors.accentDanger,
+              color: b.cashInDrawer >= 0 ? c.success : c.danger,
             ),
             const SizedBox(height: 6),
             for (final m in _methods)
@@ -253,7 +236,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
                     'Transferred in +${_num.format(l.transferIn)}',
                   if (l.transferOut > 0)
                     'Transferred out -${_num.format(l.transferOut)}',
-                ].join(' • '),
+                ].join(' · '),
               ),
           ],
         ),
@@ -281,7 +264,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
               _line(
                 c.item.isEmpty ? '—' : c.item,
                 _signed(c.units),
-                sub: [c.reason, ?c.by].join(' • '),
+                sub: [c.reason, ?c.by].join(' · '),
               ),
           ],
         ),
@@ -302,10 +285,11 @@ class _DayBookScreenState extends State<DayBookScreen> {
 
   /// Opening + came in - went out = closing, and whether that was checked.
   Widget _balance(DayBook b, int index) {
+    final c = context.colors;
     final (icon, colour, note) = switch ((b.balanced, b.valueMatches)) {
       (true, false) => (
         Icons.info_outline_rounded,
-        AppColors.textSecondary,
+        c.textSecondary,
         'Every piece is accounted for. The closing value is '
             '${formatRupees((b.valueGap ?? 0).abs())} '
             '${(b.valueGap ?? 0) > 0 ? 'lower than' : 'higher than'} what your stock is worth '
@@ -314,17 +298,17 @@ class _DayBookScreenState extends State<DayBookScreen> {
       ),
       (true, _) => (
         Icons.check_circle_rounded,
-        AppColors.accentSuccess,
+        c.success,
         'The books balance for this day.',
       ),
       (false, _) => (
         Icons.warning_amber_rounded,
-        AppColors.accentDanger,
+        c.danger,
         'These figures do not add up — treat them as unreliable and tell support.',
       ),
       _ => (
         Icons.info_outline_rounded,
-        AppColors.textMuted,
+        c.textMuted,
         'There is no separate record for this day to check these totals against.',
       ),
     };
@@ -337,12 +321,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
           children: [
             Expanded(child: _figure('Opening stock', b.opening!)),
             Expanded(
-              child: _figure(
-                'Came in',
-                b.cameIn,
-                sign: '+',
-                color: AppColors.accentSuccess,
-              ),
+              child: _figure('Came in', b.cameIn, sign: '+', color: c.success),
             ),
           ],
         ),
@@ -354,7 +333,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
                 'Went out',
                 b.wentOut,
                 sign: '−',
-                color: AppColors.accentWarning,
+                color: c.warning,
               ),
             ),
             Expanded(child: _figure('Closing stock', b.closing!)),
@@ -369,11 +348,9 @@ class _DayBookScreenState extends State<DayBookScreen> {
             Expanded(
               child: Text(
                 note,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: colour,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall!.copyWith(color: colour),
               ),
             ),
           ],
@@ -383,6 +360,8 @@ class _DayBookScreenState extends State<DayBookScreen> {
   }
 
   Widget _sales(DayBook b, int index) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     return _section(
       'Sales dispatched',
       subtitle:
@@ -412,9 +391,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
               _stat(
                 'Profit',
                 formatRupees(b.profit!),
-                color: b.profit! >= 0
-                    ? AppColors.accentSuccess
-                    : AppColors.accentDanger,
+                color: b.profit! >= 0 ? c.success : c.danger,
               ),
           ],
         ),
@@ -424,10 +401,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
             'Profit is worked out on ${formatRupees(b.netSales)}: what was billed'
             '${b.gstCollected > 0 ? ', less ${formatRupees(b.gstCollected)} GST that is collected for the government' : ''}'
             '${b.returnedValue > 0 ? ', less ${formatRupees(b.returnedValue - b.returnedGst)} for what came back' : ''}.',
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
+            style: type.bodySmall,
           ),
         ],
         if (b.profit != null && b.unitsSoldWithoutCost > 0) ...[
@@ -435,20 +409,16 @@ class _DayBookScreenState extends State<DayBookScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.accentGoldLight,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.accentGoldBorder),
+              color: c.input,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: c.border),
             ),
             child: Text(
               'This profit is higher than the real one. '
               '${_num.format(b.unitsSoldWithoutCost)} of the units sold had no cost recorded, '
               'so their full selling price is counted as profit. Add a cost price to those '
               'items to see the true figure.',
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
+              style: type.bodySmall,
             ),
           ),
         ],
@@ -459,7 +429,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
               d.customer ?? '—',
               formatRupees(d.value),
               sub:
-                  '${d.dispatchNumber} • ${d.orderNumber} • ${_num.format(d.units)} pcs',
+                  '${d.dispatchNumber} · ${d.orderNumber} · ${_num.format(d.units)} pieces',
             ),
         ],
       ],
@@ -473,19 +443,22 @@ class _DayBookScreenState extends State<DayBookScreen> {
     bool cameIn,
     int index,
   ) {
-    final colour = cameIn ? AppColors.accentSuccess : AppColors.accentWarning;
+    final c = context.colors;
+    final colour = cameIn ? c.success : c.warning;
     return _section(
       title,
       subtitle: [
         '${_num.format(total.units)} pieces',
         if (total.value != null) formatRupees(total.value!),
-      ].join(' • '),
+      ].join(' · '),
       index: index,
       children: [
         if (lines.isEmpty)
           Text(
             cameIn ? 'Nothing came in.' : 'Nothing went out.',
-            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall!.copyWith(color: c.textMuted),
           ),
         for (final l in lines)
           _line(
@@ -507,135 +480,107 @@ class _DayBookScreenState extends State<DayBookScreen> {
     String? subtitle,
     required int index,
     List<Widget> children = const [],
-  }) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-    child: SurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-          ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              subtitle,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
-            ),
+  }) {
+    final type = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      child: SurfaceCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: type.titleMedium),
+            if (subtitle != null) ...[
+              const SizedBox(height: 2),
+              Text(subtitle, style: type.bodySmall),
+            ],
+            if (children.isNotEmpty) const SizedBox(height: 12),
+            ...children,
           ],
-          if (children.isNotEmpty) const SizedBox(height: 12),
-          ...children,
-        ],
-      ),
-    ).entrance(index),
-  );
+        ),
+      ).entrance(index),
+    );
+  }
+
+  static const _figures = [FontFeature.tabularFigures()];
 
   Widget _figure(
     String label,
     StockFigure f, {
     String sign = '',
-    Color color = AppColors.textPrimary,
-  }) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        label.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          color: AppColors.textMuted,
-          letterSpacing: 0.5,
-        ),
-      ),
-      const SizedBox(height: 4),
-      Text(
-        '$sign${_num.format(f.units)}',
-        style: TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.w900,
-          color: color,
-          height: 1.1,
-        ),
-      ),
-      if (f.value != null)
-        Text(
-          formatRupees(f.value!),
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-    ],
-  );
-
-  Widget _stat(String label, String value, {Color? color}) => SizedBox(
-    width: 136,
-    child: Column(
+    Color? color,
+  }) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            color: AppColors.textMuted,
-            fontWeight: FontWeight.w600,
-          ),
+          label.toUpperCase(),
+          style: type.labelSmall!.copyWith(color: c.textMuted),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 4),
         Text(
-          value,
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w900,
-            color: color ?? AppColors.textPrimary,
+          '$sign${_num.format(f.units)}',
+          style: type.titleLarge!.copyWith(
+            color: color,
+            fontFeatures: _figures,
           ),
         ),
+        if (f.value != null)
+          Text(formatRupees(f.value!), style: type.bodySmall),
       ],
-    ),
-  );
+    );
+  }
 
-  Widget _line(String left, String right, {String? sub, Color? rightColor}) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    left,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (sub != null)
-                    Text(
-                      sub,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                ],
-              ),
+  Widget _stat(String label, String value, {Color? color}) {
+    final type = Theme.of(context).textTheme;
+    return SizedBox(
+      width: 136,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: type.labelMedium!.copyWith(color: context.colors.textMuted),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: type.titleLarge!.copyWith(
+              color: color,
+              fontFeatures: _figures,
             ),
-            const SizedBox(width: 10),
-            Text(
-              right,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: rightColor ?? AppColors.textPrimary,
-              ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _line(String left, String right, {String? sub, Color? rightColor}) {
+    final type = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(left, style: type.titleSmall),
+                if (sub != null) Text(sub, style: type.bodySmall),
+              ],
             ),
-          ],
-        ),
-      );
+          ),
+          const SizedBox(width: 10),
+          Text(
+            right,
+            style: type.titleSmall!.copyWith(
+              color: rightColor,
+              fontFeatures: _figures,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

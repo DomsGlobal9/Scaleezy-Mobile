@@ -12,7 +12,7 @@ void main() {
   final now = DateTime.now();
   final yesterday = DateTime(now.year, now.month, now.day - 1, 12);
 
-  test('load, then status and counter filters work on what loaded', () async {
+  test('load, then the status chip filters what loaded', () async {
     final repo = FakeOrderRepository(
       answer: () async => [
         order('a', total: 100, atCounter: true),
@@ -39,11 +39,28 @@ void main() {
 
     vm.selectStatus('DRAFT');
     expect(vm.shown.map((o) => o.id), ['c']);
+  });
 
-    vm.selectStatus('ALL');
-    vm.setCounterOnly(true);
-    expect(vm.shown.map((o) => o.id), ['a']);
-    expect(vm.countFor('DRAFT'), 0);
+  test('where from is asked of the server, with the search', () async {
+    final repo = FakeOrderRepository(answer: () async => [order('a')]);
+    final vm = OrdersViewModel(repo);
+    await vm.load();
+    expect(repo.sources, ['']);
+
+    vm.search('priya');
+    await vm.setSource('POS');
+
+    expect(vm.source, 'POS');
+    expect(repo.sources.last, 'POS');
+    expect(repo.searches.last, 'priya');
+    expect(OrdersViewModel.sources.values, [
+      'From anywhere',
+      'Counter',
+      'POS till',
+      'Shopify',
+      'Other',
+    ]);
+    vm.dispose();
   });
 
   test('typing searches once, trimmed, after the pause', () async {
@@ -54,7 +71,10 @@ void main() {
     vm.search(' silk ');
     expect(vm.query, ' silk ');
     expect(repo.searches, isEmpty);
-    await Future<void>.delayed(const Duration(milliseconds: 500));
+    // The website waits 300 ms.
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(repo.searches, isEmpty);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
 
     expect(repo.searches, ['silk']);
     vm.dispose();
@@ -76,7 +96,7 @@ void main() {
     expect(vm.orders!.map((o) => o.id), ['new']);
   });
 
-  test('a failed load shows the server message', () async {
+  test('a failed load keeps the error, so a 403 can show no-access', () async {
     final vm = OrdersViewModel(
       FakeOrderRepository(
         answer: () async => throw const ApiException('The server is busy.'),
@@ -86,7 +106,7 @@ void main() {
     await vm.load();
 
     expect(vm.orders, isNull);
-    expect(vm.error, 'The server is busy.');
+    expect((vm.error! as ApiException).message, 'The server is busy.');
   });
 
   test('order details loads one order, or says why not', () async {
@@ -107,6 +127,6 @@ void main() {
     );
     await failed.load();
     expect(failed.detail, isNull);
-    expect(failed.error, 'Order not found.');
+    expect((failed.error! as ApiException).message, 'Order not found.');
   });
 }

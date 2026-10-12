@@ -98,6 +98,9 @@ void main() {
     );
     await vm.load();
     expect(vm.book, isNull);
-    expect(vm.error, 'Provide a date as YYYY-MM-DD.');
+    expect(
+      (vm.error! as ApiException).message,
+      'Provide a date as YYYY-MM-DD.',
+    );
   });
 }

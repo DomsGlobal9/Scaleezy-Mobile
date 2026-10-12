@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:intl/intl.dart';
 
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/view_model/view_model.dart';
 import 'package:scaleezy/features/orders/data/order_models.dart';
 import 'package:scaleezy/features/orders/data/order_repository.dart';
 
-/// Sales orders: every status loaded at once, then filtered here by status chip and counter.
+/// Sales orders: every status loaded at once for the search and "where from", then filtered here
+/// by status chip.
 class OrdersViewModel extends ViewModel {
   OrdersViewModel([OrderRepository? repo]) : _repo = repo ?? OrderRepository();
 
@@ -23,22 +23,33 @@ class OrdersViewModel extends ViewModel {
     'CANCELLED',
   ];
 
+  /// The website's "Where from" choices; the key is the server's `source`, '' is anywhere.
+  static const sources = {
+    '': 'From anywhere',
+    'COUNTER': 'Counter',
+    'POS': 'POS till',
+    'SHOPIFY': 'Shopify',
+    'OTHER': 'Other',
+  };
+
   String _query = '';
   String _status = 'ALL';
-  bool _counterOnly = false;
+  String _source = '';
 
   List<OrderItemSummary>? _orders;
-  String? _error;
+  Object? _error;
   int _req = 0;
   Timer? _debounce;
 
   String get query => _query;
   String get status => _status;
-  bool get counterOnly => _counterOnly;
+  String get source => _source;
 
   /// Null until the first load arrives.
   List<OrderItemSummary>? get orders => _orders;
-  String? get error => _error;
+
+  /// The failure as caught, so a 403 can show no-access rather than "try again".
+  Object? get error => _error;
 
   /// Every status comes back at once so each chip can show its count; the chip filters locally.
   Future<void> load() async {
@@ -46,22 +57,25 @@ class OrdersViewModel extends ViewModel {
     _error = null;
     notifyListeners();
     try {
-      final orders = await _repo.getOrders(search: _query.trim());
+      final orders = await _repo.getOrders(
+        search: _query.trim(),
+        source: _source,
+      );
       if (disposed || id != _req) return;
       _orders = orders;
-    } on ApiException catch (e) {
+    } catch (e) {
       if (disposed || id != _req) return;
-      _error = e.message;
+      _error = e;
     }
     notifyListeners();
   }
 
-  /// Typing searches once the person pauses.
+  /// Typing searches once the person pauses, after 300 ms as the website.
   void search(String text) {
     _query = text;
     notifyListeners();
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 450), load);
+    _debounce = Timer(const Duration(milliseconds: 300), load);
   }
 
   void selectStatus(String status) {
@@ -69,21 +83,19 @@ class OrdersViewModel extends ViewModel {
     notifyListeners();
   }
 
-  void setCounterOnly(bool value) {
-    _counterOnly = value;
-    notifyListeners();
+  /// Where from is asked of the server, like the website's filter.
+  Future<void> setSource(String source) {
+    _source = source;
+    return load();
   }
 
   // ---- Derived from the loaded orders ---------------------------------------------------------
 
-  /// Loaded orders after the counter filter; what the chip counts are taken from.
-  List<OrderItemSummary> get all => (_orders ?? const <OrderItemSummary>[])
-      .where((o) => !_counterOnly || o.atCounter)
-      .toList();
+  List<OrderItemSummary> get _all => _orders ?? const <OrderItemSummary>[];
 
-  /// [all] after the status chip.
+  /// The loaded orders after the status chip.
   List<OrderItemSummary> get shown =>
-      all.where((o) => _status == 'ALL' || o.status == _status).toList();
+      _all.where((o) => _status == 'ALL' || o.status == _status).toList();
 
   /// What the shown orders are worth, leaving out cancelled ones.
   double get value => shown
@@ -91,7 +103,7 @@ class OrdersViewModel extends ViewModel {
       .fold<double>(0, (a, o) => a + o.totalAmount);
 
   int countFor(String status) {
-    final all = this.all;
+    final all = _all;
     return status == 'ALL'
         ? all.length
         : all.where((o) => o.status == status).length;

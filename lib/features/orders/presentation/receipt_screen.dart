@@ -69,32 +69,20 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     final printable = r != null && r.atCounter;
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       bottomNavigationBar: printable
           ? SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                 child: FilledButton.icon(
                   onPressed: _share,
                   icon: const Icon(Icons.chat_rounded),
-                  label: const Text(
-                    'Share on WhatsApp',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF16A34A),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
+                  label: const Text('Share on WhatsApp'),
                 ),
               ),
             )
           : null,
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppColors.accentGold,
           onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 24),
@@ -103,24 +91,30 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
               if (r == null && error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 80),
-                  child: ErrorView(message: error, onRetry: _vm.load),
+                  child: ErrorView.fromError(
+                    error,
+                    what: 'the receipt',
+                    onRetry: _vm.load,
+                  ),
                 )
               else if (r == null)
                 const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Skeleton(height: 420, radius: 22),
+                  padding: EdgeInsets.all(16),
+                  child: Skeleton(height: 420, radius: 12),
                 )
               else if (!r.atCounter)
                 // The till prints its own bills; a counter receipt for one would end in a false "Due".
-                ErrorView(
-                  message:
+                EmptyState(
+                  Icons.receipt_long_outlined,
+                  'No receipt here',
+                  text:
                       'Receipts here are for bills made at Inventory\'s own counter. '
                       'Order ${r.orderNumber} was not sold there — a bill made on the '
                       'POS till is printed by the till.',
                 )
               else
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 400),
@@ -135,7 +129,8 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     );
   }
 
-  /// White paper, black ink and a typewriter face, like the printed 80 mm receipt.
+  /// White paper, black ink and a typewriter face, like the printed 80 mm receipt. It stays white
+  /// in dark mode too: it is the bill as printed, not app chrome.
   Widget _paper(String? logoUrl) {
     final header = _vm.header;
     Widget rule() => Padding(
@@ -181,8 +176,8 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: AppColors.borderLight),
-        boxShadow: AppColors.elevatedShadow,
+        border: Border.all(color: context.colors.border),
+        boxShadow: context.colors.panelShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

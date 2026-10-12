@@ -11,11 +11,13 @@ class OrderDetailsViewModel extends ViewModel {
   final OrderRepository _repo;
 
   OrderDetail? _detail;
-  String? _error;
+  Object? _error;
 
   /// Null while loading and after a failure.
   OrderDetail? get detail => _detail;
-  String? get error => _error;
+
+  /// The failure as caught, so a 403 can show no-access rather than "try again".
+  Object? get error => _error;
 
   Future<void> load() async {
     _error = null;
@@ -23,8 +25,7 @@ class OrderDetailsViewModel extends ViewModel {
     try {
       _detail = await _repo.getOrder(orderId);
     } catch (e) {
-      // Any failure, as the sheet always showed it; an ApiException reads as the server's text.
-      _error = e.toString();
+      _error = e;
     }
     notifyListeners();
   }

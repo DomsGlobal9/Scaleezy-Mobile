@@ -10,15 +10,17 @@ class OrderRepository {
 
   final ApiClient _api;
 
-  /// sales_order:view. This route answers a bare array, not `{success, data}`.
+  /// sales_order:view. This route answers a bare array, not `{success, data}`. [source] is where
+  /// the order came from: COUNTER, POS, SHOPIFY or OTHER; none means anywhere.
   Future<List<OrderItemSummary>> getOrders({
     String? status,
     String? search,
+    String? source,
   }) async => asMaps(
     dataOf(
       await _api.get(
         ApiEndpoints.salesOrders,
-        query: {'status': status, 'search': search},
+        query: {'status': status, 'search': search, 'source': source},
       ),
     ),
   ).map(OrderItemSummary.fromJson).toList();
