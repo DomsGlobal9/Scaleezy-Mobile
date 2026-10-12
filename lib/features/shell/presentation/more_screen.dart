@@ -11,6 +11,7 @@ import 'package:scaleezy/features/settings/presentation/settings_screen.dart';
 import 'package:scaleezy/features/shelves/presentation/shelves_screen.dart';
 import 'package:scaleezy/features/suppliers/presentation/suppliers_screen.dart';
 import 'package:scaleezy/features/team/presentation/team_screen.dart';
+import 'package:scaleezy/features/transfers/presentation/transfer_screen.dart';
 
 class _Module {
   final IconData icon;
@@ -21,6 +22,9 @@ class _Module {
   final String? permission;
   final Widget Function() page;
 
+  /// Shown only when the shop fits, beyond the permission.
+  final bool Function(ShopContext shop)? onlyIf;
+
   const _Module(
     this.icon,
     this.title,
@@ -28,8 +32,9 @@ class _Module {
     this.color,
     this.bg,
     this.permission,
-    this.page,
-  );
+    this.page, {
+    this.onlyIf,
+  });
 }
 
 /// Everything beyond the four main tabs. A module only shows when the role can open it.
@@ -56,6 +61,18 @@ class MoreScreen extends StatelessWidget {
       AppColors.accentBlueLight,
       'purchase_order:view',
       () => const PurchaseOrdersScreen(),
+    ),
+    _Module(
+      Icons.swap_horiz_rounded,
+      'Move stock',
+      'To another store',
+      AppColors.textPrimary,
+      AppColors.bgSurface,
+      'inventory:transfer',
+      () => const TransferScreen(),
+      // Moving needs two real stores; the online shop does not count.
+      onlyIf: (shop) =>
+          shop.locations.where((l) => l.type != 'ONLINE').length >= 2,
     ),
     _Module(
       Icons.people_alt_rounded,
@@ -93,6 +110,7 @@ class MoreScreen extends StatelessWidget {
     final user = session.user;
     final modules = _modules
         .where((m) => m.permission == null || session.can(m.permission!))
+        .where((m) => m.onlyIf?.call(shop) ?? true)
         .toList();
 
     void open(Widget page) => AppRoutes.open(context, page);
