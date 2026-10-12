@@ -19,9 +19,9 @@ Both live under `../Scalezzy inventory /` (note the trailing space in the folder
 - Copy rules: `docs/ROLES_AND_PLAIN_LANGUAGE_PLAN.md`. Product/inventory screens say **YOU PAY** (cost), **YOU SELL AT** (selling price), **YOUR SHARE %** (margin), **ADD PROFIT** (profit %). Reports keep accounting terms. API field names never change.
 - Run locally: `npm run dev` (port 4006, needs `DATABASE_URL` + `JWT_SECRET` from `.env.example`). Then `flutter run --dart-define=API_BASE_URL=http://10.0.2.2:4006/api/v1` (Android emulator) or `http://localhost:4006/api/v1` (iOS simulator).
 
-**`inventory_frontend`** (React 19 + Vite + react-query) is a reference for **screens and user flows only**. It is behind the backend: it has no login, permission checks or store selection, and uses `x-client-id` and hard-coded URLs. Do not copy its API/auth patterns or its dark theme. Pages are in `src/pages/` (routes in `src/App.jsx`), and data hooks per resource are in `src/hooks/`.
+**`inventory_frontend`** (React 19 + Vite + react-query) is the reference for **screens and user flows**. It is the full product: cookie login, `<Guard permission=…>` on every business route, store picker, ~77 routes in `src/App.jsx`, pages in `src/pages/` (sales/, shelves/, inventory/, settings/, …), data calls in `src/hooks/` and `src/services/`. Its UI is English only (only its help center is translated). Brand is lime/deep green with light and dark themes; the app is still slate/amber light-only (open decision).
 
-Web features not yet in the mobile app: create-product wizard, sales-order creation/editing + dispatch, returns, stock counts (audits), inventory ledger, alert center, stock adjustment, variant add/bulk edit, archive/trash/restore, catalog config (sizes/colours/categories), label printing, CSV import/export. Mobile-only (keep): login/session, permission gating, store selection, shelves, team.
+What the web has and the app lacks, ranked by phone fit, plus open decisions (counter sale is retired on the web; store-selection and branding differ): `docs/web-parity.md`. Request/response details for those features: `docs/backend-api.md`. Both were researched 2026-10-12; re-check the source before building.
 
 ## Commands
 
@@ -61,7 +61,7 @@ Rules:
 - Every backend path goes in `ApiEndpoints`. `test/core/network/api_endpoints_test.dart` pins each path; add a line there for a new one.
 - One repository per feature, one method per endpoint, with the required permission in its doc comment. Repositories take an optional `ApiClient` (for tests) and default to `ApiClient.instance`.
 - Every screen-to-screen push goes through a typed `AppRoutes` method. Bottom-tab switching stays in `MainNavigationScreen`.
-- MVVM, being rolled out screen by screen (done: products list + product detail; the rest still use `setState` and call repositories directly). The pattern, see `features/products/`:
+- MVVM everywhere: no screen calls a repository or uses `setState` for data (remaining `setState` is purely visual: password visibility, torch, an expanded rack). The pattern, see `features/products/`:
   - The view model lives in `presentation/view_models/<screen>_view_model.dart` and extends `ViewModel` (`core/view_model/view_model.dart`, a `ChangeNotifier` that ignores notifications after dispose). It owns all loading, paging, filters and request guards, takes its repositories as optional constructor arguments, and never imports Flutter widgets.
   - The screen keeps only UI: controllers, dialogs, sheets and navigation. It takes an optional `viewModel` (tests pass one; otherwise it creates and disposes its own), rebuilds through `ListenableBuilder`, and imports no repository or `ApiClient`.
   - Purely visual state (an expanded card, a draft inside a filter sheet) stays in the widget.
