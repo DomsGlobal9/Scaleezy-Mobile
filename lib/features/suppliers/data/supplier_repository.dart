@@ -1,0 +1,16 @@
+import 'package:scaleezy/core/network/api_client.dart';
+import 'package:scaleezy/core/network/api_endpoints.dart';
+import 'package:scaleezy/core/utils/json_parse.dart';
+import 'package:scaleezy/features/suppliers/data/supplier_models.dart';
+
+/// Suppliers. Permissions noted per call.
+class SupplierRepository {
+  SupplierRepository([ApiClient? client]) : _api = client ?? ApiClient.instance;
+
+  final ApiClient _api;
+
+  /// supplier:view
+  Future<List<Supplier>> suppliers() async => asMaps(
+    dataOf(await _api.get(ApiEndpoints.suppliers)),
+  ).map(Supplier.fromJson).toList();
+}
