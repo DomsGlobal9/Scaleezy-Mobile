@@ -38,10 +38,34 @@ void main() {
     await tester.tap(find.text('Ravi Kumar'));
     await tester.pumpAndSettle();
     expect(find.text('Banarasi Saree'), findsOneWidget);
+    // Not a counter bill: no receipt, as on the web.
+    expect(find.text('Receipt'), findsNothing);
 
     // Closing the sheet disposes its view model mid-animation without complaint.
     Navigator.of(tester.element(find.text('Banarasi Saree'))).pop();
     await tester.pumpAndSettle();
     expect(find.text('Banarasi Saree'), findsNothing);
+  });
+
+  testWidgets('a counter bill offers its receipt', (tester) async {
+    final repo = FakeOrderRepository(
+      answer: () async => [
+        order('a', customer: 'Priya Sharma', atCounter: true),
+      ],
+      detail: (id) async => orderDetail(id, atCounter: true),
+    );
+    await tester.pumpWidget(
+      ShopScope(
+        shop: ShopContext(offlineClient()),
+        child: MaterialApp(
+          home: OrdersScreen(viewModel: OrdersViewModel(repo)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Priya Sharma'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(OutlinedButton, 'Receipt'), findsOneWidget);
   });
 }
