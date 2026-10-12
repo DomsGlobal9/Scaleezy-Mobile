@@ -88,4 +88,8 @@ abstract final class ApiEndpoints {
   // Day book & receipts
   static const dayBook = '/daybook';
   static String receipt(String orderId) => '/counter-sales/$orderId/receipt';
+
+  // Dashboard: the website's money tiles and its low-stock list
+  static const reportsDashboardSummary = '/reports/dashboard-summary';
+  static const inventoryAlerts = '/inventory/alerts';
 }

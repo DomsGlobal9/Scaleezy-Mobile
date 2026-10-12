@@ -69,5 +69,7 @@ void main() {
     expect(ApiEndpoints.inventoryTransfers, '/inventory-transfers');
     expect(ApiEndpoints.dayBook, '/daybook');
     expect(ApiEndpoints.receipt('o1'), '/counter-sales/o1/receipt');
+    expect(ApiEndpoints.reportsDashboardSummary, '/reports/dashboard-summary');
+    expect(ApiEndpoints.inventoryAlerts, '/inventory/alerts');
   });
 }
