@@ -1,10 +1,7 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import 'package:scaleezy/app/app_routes.dart';
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/shop/shop_models.dart';
@@ -13,7 +10,11 @@ import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/scan_sheet.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/shelves/data/shelf_models.dart';
-import 'package:scaleezy/features/shelves/data/shelf_repository.dart';
+import 'package:scaleezy/features/shelves/presentation/view_models/find_piece_view_model.dart';
+import 'package:scaleezy/features/shelves/presentation/view_models/move_sheet_view_model.dart';
+import 'package:scaleezy/features/shelves/presentation/view_models/shelves_view_model.dart';
+import 'package:scaleezy/features/shelves/presentation/view_models/spot_view_model.dart';
+import 'package:scaleezy/features/shelves/presentation/view_models/waiting_to_shelve_view_model.dart';
 
 IconData _kindIcon(String kind) => switch (kind) {
   'AREA' => Icons.meeting_room_outlined,
@@ -29,106 +30,92 @@ IconData _kindIcon(String kind) => switch (kind) {
 String _kindLabel(String kind) =>
     kind.isEmpty ? 'Spot' : kind[0] + kind.substring(1).toLowerCase();
 
-/// Scan a shelf label and open it. Shared by the overview and the pickers.
-Future<SpotContents?> _scanShelf(
-  BuildContext context, {
-  String? locationId,
-}) async {
-  final code = await showScanSheet(
-    context,
-    title: 'Scan the shelf label',
-    hint: 'Point at the label on the shelf',
-  );
-  if (code == null || !context.mounted) return null;
-  try {
-    return await ShelfRepository().scanSpot(code, locationId: locationId);
-  } on ApiException catch (e) {
-    if (context.mounted) showMessage(context, e.message, error: true);
-    return null;
-  }
-}
+/// Scan a shelf label; the caller's view model looks it up. Shared by the overview and the
+/// pickers.
+Future<String?> _scanShelfLabel(BuildContext context) => showScanSheet(
+  context,
+  title: 'Scan the shelf label',
+  hint: 'Point at the label on the shelf',
+);
 
 class ShelvesScreen extends StatefulWidget {
-  const ShelvesScreen({super.key});
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final ShelvesViewModel? viewModel;
+
+  const ShelvesScreen({super.key, this.viewModel});
 
   @override
   State<ShelvesScreen> createState() => _ShelvesScreenState();
 }
 
 class _ShelvesScreenState extends State<ShelvesScreen> {
-  final _repo = ShelfRepository();
-  StockLocation? _location;
-  ShelfTree? _tree;
-  String? _error;
+  late final ShelvesViewModel _vm = widget.viewModel ?? ShelvesViewModel();
+
+  /// Racks that are opened out to show what is inside.
   final Set<String> _open = {};
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_location == null) {
+    // Until a store is known, try again whenever the shop's stores change.
+    if (_vm.location == null) {
       final shop = ShopScope.of(context);
-      _location =
-          shop.selectedLocation ??
-          shop.locations.where((l) => l.type != 'ONLINE').firstOrNull ??
-          shop.locations.firstOrNull;
-      _load();
+      _vm.start(shop.selectedLocation, shop.locations);
     }
   }
 
-  Future<void> _load() async {
-    final loc = _location;
-    if (loc == null) {
-      setState(
-        () =>
-            _error = 'No store is set up yet, so there are no shelves to show.',
-      );
-      return;
-    }
-    setState(() => _error = null);
-    try {
-      final tree = await _repo.shelfTree(loc.id);
-      if (mounted) setState(() => _tree = tree);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    }
+  @override
+  void dispose() {
+    if (widget.viewModel == null) _vm.dispose();
+    super.dispose();
   }
 
   void _pickLocation(StockLocation loc) {
-    if (loc.id == _location?.id) return;
-    setState(() {
-      _location = loc;
-      _tree = null;
-      _open.clear();
-    });
-    _load();
+    if (loc.id == _vm.location?.id) return;
+    _open.clear();
+    _vm.pickLocation(loc);
   }
 
   Future<void> _openSpot(String spotId) async {
     await AppRoutes.spot(context, spotId);
-    _load();
+    _vm.load();
   }
 
   Future<void> _scan() async {
-    final spot = await _scanShelf(context, locationId: _location?.id);
-    if (spot != null && mounted) _openSpot(spot.spotId);
+    final code = await _scanShelfLabel(context);
+    if (code == null || !mounted) return;
+    final error = await _vm.scanLabel(code);
+    if (!mounted) return;
+    if (error != null) {
+      showMessage(context, error, error: true);
+      return;
+    }
+    _openSpot(_vm.scanned!.spotId);
   }
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
     final shop = ShopScope.of(context);
-    final stores = shop.locations.where((l) => l.type != 'ONLINE').toList();
-    final tree = _tree;
+    final stores = ShelvesViewModel.storesOf(shop.locations);
+    final tree = _vm.tree;
 
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: RefreshIndicator(
           color: AppColors.accentGold,
-          onRefresh: _load,
+          onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 32),
             children: [
-              PageHeader(title: 'Shelves', subtitle: _location?.name),
+              PageHeader(title: 'Shelves', subtitle: _vm.location?.name),
               if (stores.length > 1)
                 SizedBox(
                   height: 44,
@@ -139,7 +126,7 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
                     separatorBuilder: (_, _) => const SizedBox(width: 8),
                     itemBuilder: (_, i) {
                       final l = stores[i];
-                      final sel = l.id == _location?.id;
+                      final sel = l.id == _vm.location?.id;
                       return Pressable(
                         onTap: () => _pickLocation(l),
                         child: AnimatedContainer(
@@ -193,7 +180,7 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
                         () {
                           AppRoutes.findPiece(
                             context,
-                            locationId: _location?.id,
+                            locationId: _vm.location?.id,
                           );
                         },
                       ),
@@ -202,10 +189,10 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
                 ).entrance(0),
               ),
               const SizedBox(height: 16),
-              if (tree == null && _error != null)
+              if (tree == null && _vm.error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 60),
-                  child: ErrorView(message: _error!, onRetry: _load),
+                  child: ErrorView(message: _vm.error!, onRetry: _vm.load),
                 )
               else if (tree == null)
                 const Padding(
@@ -362,7 +349,7 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
                         locationId: t.locationId,
                         locationName: t.locationName,
                       );
-                      _load();
+                      _vm.load();
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -495,35 +482,34 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
 
 class SpotScreen extends StatefulWidget {
   final String spotId;
-  const SpotScreen({super.key, required this.spotId});
+
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final SpotViewModel? viewModel;
+
+  const SpotScreen({super.key, required this.spotId, this.viewModel});
 
   @override
   State<SpotScreen> createState() => _SpotScreenState();
 }
 
 class _SpotScreenState extends State<SpotScreen> {
-  final _repo = ShelfRepository();
-  SpotContents? _spot;
-  String? _error;
+  late final SpotViewModel _vm =
+      widget.viewModel ?? SpotViewModel(widget.spotId);
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _vm.load();
   }
 
-  Future<void> _load() async {
-    setState(() => _error = null);
-    try {
-      final s = await _repo.spot(widget.spotId);
-      if (mounted) setState(() => _spot = s);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    }
+  @override
+  void dispose() {
+    if (widget.viewModel == null) _vm.dispose();
+    super.dispose();
   }
 
   Future<void> _moveOff(ShelfItem item) async {
-    final s = _spot!;
+    final s = _vm.spot!;
     final result = await showModalBottomSheet<(ShelfSpot?, int)>(
       context: context,
       isScrollControlled: true,
@@ -540,43 +526,42 @@ class _SpotScreenState extends State<SpotScreen> {
     );
     if (result == null || !mounted) return;
     final (to, qty) = result;
-    try {
-      final warning = await _repo.moveOnShelves(
-        locationId: s.locationId,
-        variantId: item.variantId,
-        fromSpotId: s.spotId,
-        toSpotId: to?.id,
-        quantity: qty,
-      );
-      if (!mounted) return;
-      showMessage(
-        context,
-        warning ??
-            (to == null
-                ? 'Taken off the shelf.'
-                : 'Moved $qty to ${to.title}.'),
-        success: warning == null,
-      );
-      _load();
-    } on ApiException catch (e) {
-      if (mounted) showMessage(context, e.message, error: true);
+    final error = await _vm.move(item, to, qty);
+    if (!mounted) return;
+    if (error != null) {
+      showMessage(context, error, error: true);
+      return;
     }
+    final warning = _vm.warning;
+    showMessage(
+      context,
+      warning ??
+          (to == null ? 'Taken off the shelf.' : 'Moved $qty to ${to.title}.'),
+      success: warning == null,
+    );
   }
 
   Future<void> _putHere() async {
-    final s = _spot!;
+    final s = _vm.spot!;
     await AppRoutes.waitingToShelve(
       context,
       locationId: s.locationId,
       locationName: s.locationName,
       target: s,
     );
-    _load();
+    _vm.load();
   }
 
   @override
   Widget build(BuildContext context) {
-    final s = _spot;
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
+    final s = _vm.spot;
     final canMove = SessionScope.of(context).can('shelf:putaway');
     return Scaffold(
       backgroundColor: AppColors.bgLight,
@@ -595,7 +580,7 @@ class _SpotScreenState extends State<SpotScreen> {
       body: SafeArea(
         child: RefreshIndicator(
           color: AppColors.accentGold,
-          onRefresh: _load,
+          onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 100),
             children: [
@@ -605,10 +590,10 @@ class _SpotScreenState extends State<SpotScreen> {
                     ? null
                     : '${_kindLabel(s.kind)} • ${s.locationName}',
               ),
-              if (s == null && _error != null)
+              if (s == null && _vm.error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 80),
-                  child: ErrorView(message: _error!, onRetry: _load),
+                  child: ErrorView(message: _vm.error!, onRetry: _vm.load),
                 )
               else if (s == null)
                 const Padding(
@@ -761,20 +746,25 @@ class _SpotScreenState extends State<SpotScreen> {
 class FindPieceScreen extends StatefulWidget {
   final String? locationId;
   final String? initialQuery;
-  const FindPieceScreen({super.key, this.locationId, this.initialQuery});
+
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final FindPieceViewModel? viewModel;
+
+  const FindPieceScreen({
+    super.key,
+    this.locationId,
+    this.initialQuery,
+    this.viewModel,
+  });
 
   @override
   State<FindPieceScreen> createState() => _FindPieceScreenState();
 }
 
 class _FindPieceScreenState extends State<FindPieceScreen> {
-  final _repo = ShelfRepository();
+  late final FindPieceViewModel _vm =
+      widget.viewModel ?? FindPieceViewModel(locationId: widget.locationId);
   final _query = TextEditingController();
-  Timer? _debounce;
-  List<WhereItem>? _results;
-  bool _loading = false;
-  String? _error;
-  int _req = 0;
 
   @override
   void initState() {
@@ -782,51 +772,27 @@ class _FindPieceScreenState extends State<FindPieceScreen> {
     final q = widget.initialQuery;
     if (q != null && q.isNotEmpty) {
       _query.text = q;
-      _search(q);
+      _vm.search(q);
     }
   }
 
   @override
   void dispose() {
-    _debounce?.cancel();
+    if (widget.viewModel == null) _vm.dispose();
     _query.dispose();
     super.dispose();
   }
 
-  Future<void> _search(String q) async {
-    final id = ++_req;
-    if (q.trim().isEmpty) {
-      setState(() {
-        _results = null;
-        _loading = false;
-      });
-      return;
-    }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final r = await _repo.findOnShelves(q);
-      if (mounted && id == _req) {
-        setState(() {
-          _results = r;
-          _loading = false;
-        });
-      }
-    } on ApiException catch (e) {
-      if (mounted && id == _req) {
-        setState(() {
-          _error = e.message;
-          _loading = false;
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final results = _results;
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
+    final results = _vm.results;
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
@@ -849,7 +815,7 @@ class _FindPieceScreenState extends State<FindPieceScreen> {
                     );
                     if (code != null) {
                       _query.text = code;
-                      _search(code);
+                      _vm.search(code);
                     }
                   },
                 ),
@@ -861,26 +827,22 @@ class _FindPieceScreenState extends State<FindPieceScreen> {
                 controller: _query,
                 hint: 'e.g. red banarasi, SKU-104, 8901…',
                 onChanged: (v) {
-                  setState(() {});
-                  _debounce?.cancel();
-                  _debounce = Timer(
-                    const Duration(milliseconds: 400),
-                    () => _search(v),
-                  );
+                  setState(() {}); // shows or hides the clear button
+                  _vm.typed(v);
                 },
               ),
             ),
-            if (_loading)
+            if (_vm.loading)
               const LinearProgressIndicator(
                 minHeight: 2,
                 color: AppColors.accentGold,
                 backgroundColor: Colors.transparent,
               ),
             Expanded(
-              child: _error != null
+              child: _vm.error != null
                   ? ErrorView(
-                      message: _error!,
-                      onRetry: () => _search(_query.text),
+                      message: _vm.error!,
+                      onRetry: () => _vm.search(_query.text),
                     )
                   : results == null
                   ? const _Hint(
@@ -908,12 +870,7 @@ class _FindPieceScreenState extends State<FindPieceScreen> {
   }
 
   Widget _whereCard(WhereItem w) {
-    final places = widget.locationId == null
-        ? w.places
-        : [
-            ...w.places.where((p) => p.locationId == widget.locationId),
-            ...w.places.where((p) => p.locationId != widget.locationId),
-          ];
+    final places = _vm.placesOf(w);
     return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1028,11 +985,15 @@ class WaitingToShelveScreen extends StatefulWidget {
   /// When opened from a shelf, pieces go straight there.
   final SpotContents? target;
 
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final WaitingToShelveViewModel? viewModel;
+
   const WaitingToShelveScreen({
     super.key,
     required this.locationId,
     required this.locationName,
     this.target,
+    this.viewModel,
   });
 
   @override
@@ -1040,24 +1001,19 @@ class WaitingToShelveScreen extends StatefulWidget {
 }
 
 class _WaitingToShelveScreenState extends State<WaitingToShelveScreen> {
-  final _repo = ShelfRepository();
-  List<NotShelvedItem>? _items;
-  String? _error;
+  late final WaitingToShelveViewModel _vm =
+      widget.viewModel ?? WaitingToShelveViewModel(widget.locationId);
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _vm.load();
   }
 
-  Future<void> _load() async {
-    setState(() => _error = null);
-    try {
-      final items = await _repo.notShelved(widget.locationId);
-      if (mounted) setState(() => _items = items);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    }
+  @override
+  void dispose() {
+    if (widget.viewModel == null) _vm.dispose();
+    super.dispose();
   }
 
   Future<void> _putAway(NotShelvedItem n) async {
@@ -1078,35 +1034,37 @@ class _WaitingToShelveScreenState extends State<WaitingToShelveScreen> {
     );
     if (result == null || result.$1 == null || !mounted) return;
     final (to, qty) = result;
-    try {
-      final warning = await _repo.putAway(
-        locationId: widget.locationId,
-        variantId: n.item.variantId,
-        spotId: to!.id,
-        quantity: qty,
-      );
-      if (!mounted) return;
-      showMessage(
-        context,
-        warning ?? 'Put $qty on ${to.title}.',
-        success: warning == null,
-      );
-      _load();
-    } on ApiException catch (e) {
-      if (mounted) showMessage(context, e.message, error: true);
+    final error = await _vm.putAway(n, to!, qty);
+    if (!mounted) return;
+    if (error != null) {
+      showMessage(context, error, error: true);
+      return;
     }
+    final warning = _vm.warning;
+    showMessage(
+      context,
+      warning ?? 'Put $qty on ${to.title}.',
+      success: warning == null,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final items = _items;
-    final waiting = items?.fold<int>(0, (a, n) => a + n.notShelved) ?? 0;
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
+    final items = _vm.items;
+    final waiting = _vm.waiting;
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: RefreshIndicator(
           color: AppColors.accentGold,
-          onRefresh: _load,
+          onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 32),
             children: [
@@ -1118,10 +1076,10 @@ class _WaitingToShelveScreenState extends State<WaitingToShelveScreen> {
                     ? widget.locationName
                     : '$waiting pieces in ${widget.locationName}',
               ),
-              if (items == null && _error != null)
+              if (items == null && _vm.error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 80),
-                  child: ErrorView(message: _error!, onRetry: _load),
+                  child: ErrorView(message: _vm.error!, onRetry: _vm.load),
                 )
               else if (items == null)
                 const Padding(
@@ -1200,61 +1158,44 @@ class _MoveSheet extends StatefulWidget {
 }
 
 class _MoveSheetState extends State<_MoveSheet> {
-  late int _qty = widget.maxQty;
-  ShelfSpot? _to;
-  bool _offShelf = false;
-  List<ShelfSpot>? _spots;
-  String _filter = '';
+  late final _vm = MoveSheetViewModel(
+    locationId: widget.locationId,
+    maxQty: widget.maxQty,
+    excludeSpotId: widget.excludeSpotId,
+    fixedTarget: widget.fixedTarget,
+    requireTarget: widget.requireTarget,
+  );
 
   @override
   void initState() {
     super.initState();
-    final t = widget.fixedTarget;
-    if (t != null) {
-      _to = ShelfSpot(
-        id: t.spotId,
-        kind: t.kind,
-        code: t.address,
-        address: t.address,
-        name: t.name,
-      );
-    } else {
-      ShelfRepository()
-          .shelfTree(widget.locationId)
-          .then((tree) {
-            if (!mounted) return;
-            setState(
-              () => _spots = tree.spots
-                  .expand((s) => s.flatten)
-                  .where(
-                    (s) =>
-                        s.holdsStock &&
-                        s.active &&
-                        s.id != widget.excludeSpotId,
-                  )
-                  .toList(),
-            );
-          })
-          .catchError((_) {
-            if (mounted) setState(() => _spots = const []);
-          });
-    }
+    _vm.load();
   }
 
-  bool get _ready =>
-      _qty > 0 && (_to != null || (_offShelf && !widget.requireTarget));
+  @override
+  void dispose() {
+    _vm.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scan() async {
+    final code = await _scanShelfLabel(context);
+    if (code == null || !mounted) return;
+    final error = await _vm.scanTarget(code);
+    if (error != null && mounted) showMessage(context, error, error: true);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final spots = (_spots ?? const <ShelfSpot>[])
-        .where(
-          (s) =>
-              _filter.isEmpty ||
-              '${s.address} ${s.name ?? ''}'.toLowerCase().contains(
-                _filter.toLowerCase(),
-              ),
-        )
-        .toList();
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildSheet(),
+    );
+  }
+
+  Widget _buildSheet() {
+    final spots = _vm.spots;
+    final to = _vm.to;
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -1292,10 +1233,10 @@ class _MoveSheetState extends State<_MoveSheet> {
                     ),
                     const Spacer(),
                     QuantityStepper(
-                      value: _qty,
+                      value: _vm.qty,
                       min: 1,
                       max: widget.maxQty,
-                      onChanged: (v) => setState(() => _qty = v),
+                      onChanged: _vm.setQty,
                     ),
                   ],
                 ),
@@ -1312,31 +1253,7 @@ class _MoveSheetState extends State<_MoveSheet> {
                       ),
                       const Spacer(),
                       TextButton.icon(
-                        onPressed: () async {
-                          final spot = await _scanShelf(
-                            context,
-                            locationId: widget.locationId,
-                          );
-                          if (spot == null || !context.mounted) return;
-                          if (!spot.holdsStock) {
-                            showMessage(
-                              context,
-                              '${spot.address} holds other shelves. Scan one of those.',
-                              error: true,
-                            );
-                            return;
-                          }
-                          setState(() {
-                            _offShelf = false;
-                            _to = ShelfSpot(
-                              id: spot.spotId,
-                              kind: spot.kind,
-                              code: spot.address,
-                              address: spot.address,
-                              name: spot.name,
-                            );
-                          });
-                        },
+                        onPressed: _scan,
                         icon: const Icon(
                           Icons.qr_code_scanner_rounded,
                           size: 18,
@@ -1349,7 +1266,7 @@ class _MoveSheetState extends State<_MoveSheet> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                   child: TextField(
-                    onChanged: (v) => setState(() => _filter = v),
+                    onChanged: _vm.setFilter,
                     decoration: InputDecoration(
                       isDense: true,
                       filled: true,
@@ -1364,23 +1281,17 @@ class _MoveSheetState extends State<_MoveSheet> {
                   ),
                 ),
                 Expanded(
-                  child: _spots == null
+                  child: _vm.loadingSpots
                       ? const Center(
                           child: CircularProgressIndicator(
                             color: AppColors.accentGold,
                           ),
                         )
                       : RadioGroup<String>(
-                          groupValue: _offShelf ? '__off__' : _to?.id,
-                          onChanged: (v) => setState(() {
-                            if (v == '__off__') {
-                              _offShelf = true;
-                              _to = null;
-                            } else {
-                              _offShelf = false;
-                              _to = spots.firstWhere((s) => s.id == v);
-                            }
-                          }),
+                          groupValue: _vm.offShelf ? '__off__' : to?.id,
+                          onChanged: (v) => v == '__off__'
+                              ? _vm.takeOffShelf()
+                              : _vm.choose(spots.firstWhere((s) => s.id == v)),
                           child: ListView(
                             padding: const EdgeInsets.symmetric(horizontal: 12),
                             children: [
@@ -1436,10 +1347,8 @@ class _MoveSheetState extends State<_MoveSheet> {
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: _ready
-                        ? () => Navigator.of(
-                            context,
-                          ).pop((_offShelf ? null : _to, _qty))
+                    onPressed: _vm.ready
+                        ? () => Navigator.of(context).pop(_vm.result)
                         : null,
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.accentGold,
@@ -1449,11 +1358,11 @@ class _MoveSheetState extends State<_MoveSheet> {
                       ),
                     ),
                     child: Text(
-                      _offShelf
-                          ? 'Take $_qty off'
-                          : (_to == null
+                      _vm.offShelf
+                          ? 'Take ${_vm.qty} off'
+                          : (to == null
                                 ? 'Choose a shelf'
-                                : 'Move $_qty to ${_to!.title}'),
+                                : 'Move ${_vm.qty} to ${to.title}'),
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                   ),
