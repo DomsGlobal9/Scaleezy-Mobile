@@ -106,6 +106,7 @@ class _ScannerScreenState extends State<ScannerScreen>
   Future<VariantItem?> _chooseMatch(List<VariantItem> matches) {
     return showModalBottomSheet<VariantItem>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: AppColors.bgCard,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),

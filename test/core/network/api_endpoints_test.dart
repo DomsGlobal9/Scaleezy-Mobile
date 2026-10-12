@@ -15,6 +15,7 @@ void main() {
     expect(ApiEndpoints.locations, '/locations');
     expect(ApiEndpoints.dashboardSummary, '/dashboard/summary');
     expect(ApiEndpoints.products, '/products');
+    expect(ApiEndpoints.product('p1'), '/products/p1');
     expect(ApiEndpoints.productVariants('p1'), '/products/p1/variants');
     expect(ApiEndpoints.variantSearch, '/variants/search');
     expect(ApiEndpoints.inventoryVariants, '/inventory/variants');

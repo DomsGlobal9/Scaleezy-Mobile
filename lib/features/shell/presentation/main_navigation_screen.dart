@@ -1,48 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 
-import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
-import 'package:scaleezy/features/dashboard/presentation/home_screen.dart';
-import 'package:scaleezy/features/orders/presentation/orders_screen.dart';
-import 'package:scaleezy/features/products/presentation/products_screen.dart';
-import 'package:scaleezy/features/scanner/presentation/scanner_screen.dart';
-import 'package:scaleezy/features/shell/presentation/more_screen.dart';
 
-class MainNavigationScreen extends StatefulWidget {
-  const MainNavigationScreen({super.key});
+/// The bottom bar around the five tabs. Each tab is a go_router branch with its own back stack
+/// (see lib/app/router.dart).
+class MainNavigationScreen extends StatelessWidget {
+  final StatefulNavigationShell navigationShell;
 
-  @override
-  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
-}
-
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
-  int _currentIndex = 0;
+  const MainNavigationScreen({super.key, required this.navigationShell});
 
   static const _scanIndex = 2;
 
-  void _onTabSelected(int index) {
-    if (index == _currentIndex) return;
-    HapticFeedback.selectionClick();
-    setState(() => _currentIndex = index);
+  /// Switches to tab [index] from inside any tab, as tapping it would.
+  static void selectTab(BuildContext context, int index) =>
+      _select(StatefulNavigationShell.of(context).widget, index);
+
+  /// Tapping the tab already showing takes it back to its first screen.
+  static void _select(StatefulNavigationShell shell, int index) {
+    if (index != shell.currentIndex) HapticFeedback.selectionClick();
+    shell.goBranch(index, initialLocation: index == shell.currentIndex);
   }
+
+  int get _currentIndex => navigationShell.currentIndex;
+
+  void _onTabSelected(int index) => _select(navigationShell, index);
 
   @override
   Widget build(BuildContext context) {
-    final session = SessionScope.of(context);
-    final screens = <Widget>[
-      HomeScreen(onNavigateTab: _onTabSelected),
-      const ProductsScreen(),
-      ScannerScreen(active: _currentIndex == _scanIndex),
-      session.can('sales_order:view')
-          ? const OrdersScreen()
-          : const _NoAccess(what: 'orders'),
-      MoreScreen(onNavigateTab: _onTabSelected),
-    ];
+    // Back on another tab's first screen goes to Dashboard; on Dashboard it leaves the app.
+    return PopScope(
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) navigationShell.goBranch(0);
+      },
+      child: _buildScaffold(context),
+    );
+  }
 
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bgLight,
-      body: IndexedStack(index: _currentIndex, children: screens),
+      body: navigationShell,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppColors.bgCard,
@@ -61,12 +61,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             child: Row(
               children: [
                 _navItem(
+                  context,
                   0,
                   Icons.space_dashboard_outlined,
                   Icons.space_dashboard_rounded,
                   'Dashboard',
                 ),
                 _navItem(
+                  context,
                   1,
                   Icons.checkroom_outlined,
                   Icons.checkroom_rounded,
@@ -74,12 +76,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ),
                 _scanItem(),
                 _navItem(
+                  context,
                   3,
                   Icons.receipt_long_outlined,
                   Icons.receipt_long_rounded,
                   'Orders',
                 ),
                 _navItem(
+                  context,
                   4,
                   Icons.grid_view_outlined,
                   Icons.grid_view_rounded,
@@ -147,6 +151,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   Widget _navItem(
+    BuildContext context,
     int index,
     IconData icon,
     IconData selectedIcon,
@@ -201,42 +206,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NoAccess extends StatelessWidget {
-  final String what;
-  const _NoAccess({required this.what});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bgLight,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.lock_outline_rounded,
-                size: 44,
-                color: AppColors.textMuted,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Your role does not include $what. Ask the shop owner if you need it.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

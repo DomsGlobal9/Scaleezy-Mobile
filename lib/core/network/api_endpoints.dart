@@ -22,6 +22,7 @@ abstract final class ApiEndpoints {
 
   // Products
   static const products = '/products';
+  static String product(String id) => '/products/$id';
   static String productVariants(String productId) =>
       '/products/$productId/variants';
   static const variantSearch = '/variants/search';

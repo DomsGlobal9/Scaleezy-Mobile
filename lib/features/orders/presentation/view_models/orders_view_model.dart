@@ -6,7 +6,6 @@ import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/view_model/view_model.dart';
 import 'package:scaleezy/features/orders/data/order_models.dart';
 import 'package:scaleezy/features/orders/data/order_repository.dart';
-import 'package:scaleezy/features/orders/presentation/view_models/order_details_view_model.dart';
 
 /// Sales orders: every status loaded at once, then filtered here by status chip and counter.
 class OrdersViewModel extends ViewModel {
@@ -74,10 +73,6 @@ class OrdersViewModel extends ViewModel {
     _counterOnly = value;
     notifyListeners();
   }
-
-  /// The sheet that shows one order; it disposes this when closed.
-  OrderDetailsViewModel details(OrderItemSummary order) =>
-      OrderDetailsViewModel(order.id, _repo);
 
   // ---- Derived from the loaded orders ---------------------------------------------------------
 

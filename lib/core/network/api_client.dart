@@ -56,6 +56,10 @@ class ApiClient {
   @visibleForTesting
   factory ApiClient.withDio(Dio dio) => ApiClient._(dio);
 
+  /// For tests that build screens with their default repositories (the router tests).
+  @visibleForTesting
+  static set debugInstance(ApiClient? client) => _instance = client;
+
   static Future<ApiClient> init() async {
     if (_instance != null) return _instance!;
 

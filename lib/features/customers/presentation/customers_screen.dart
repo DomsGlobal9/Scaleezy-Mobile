@@ -44,6 +44,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Future<void> _add() async {
     final created = await showModalBottomSheet<Customer>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppColors.bgCard,
       shape: const RoundedRectangleBorder(
@@ -261,6 +262,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   Future<void> _edit() async {
     final updated = await showModalBottomSheet<Customer>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppColors.bgCard,
       shape: const RoundedRectangleBorder(

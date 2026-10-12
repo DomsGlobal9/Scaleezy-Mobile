@@ -1,99 +1,101 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:go_router/go_router.dart';
+
+import 'package:scaleezy/app/router.dart';
 import 'package:scaleezy/core/shop/shop_models.dart';
-import 'package:scaleezy/features/products/data/product_models.dart';
-import 'package:scaleezy/features/shelves/data/shelf_models.dart';
 import 'package:scaleezy/features/customers/data/customer_models.dart';
+import 'package:scaleezy/features/products/data/product_models.dart';
 import 'package:scaleezy/features/purchase_orders/data/purchase_order_models.dart';
-import 'package:scaleezy/features/products/presentation/product_detail_screen.dart';
-import 'package:scaleezy/features/shelves/presentation/shelves_screen.dart';
-import 'package:scaleezy/features/customers/presentation/customers_screen.dart';
-import 'package:scaleezy/features/purchase_orders/presentation/purchase_orders_screen.dart';
-import 'package:scaleezy/features/picking/presentation/picking_screen.dart';
-import 'package:scaleezy/features/transfers/presentation/transfer_screen.dart';
-import 'package:scaleezy/features/stock_counts/presentation/stock_counts_screen.dart';
-import 'package:scaleezy/features/orders/presentation/receipt_screen.dart';
+import 'package:scaleezy/features/shelves/data/shelf_models.dart';
 
-/// Every push from one screen to another, typed, so a screen never builds a route itself.
-/// Switching bottom tabs stays in MainNavigationScreen.
+/// Every move from one screen to another, typed, so a screen never builds a path itself.
+/// Pushes (not `go`) so an awaited result comes back and the caller can reload; objects ride
+/// as `extra`, and each route can fetch them by id without it. Bottom tabs switch in
+/// MainNavigationScreen.
 abstract final class AppRoutes {
-  static Future<T?> _push<T>(BuildContext context, Widget page) =>
-      Navigator.of(context).push<T>(MaterialPageRoute(builder: (_) => page));
+  /// [path] with the given query values, leaving out the empty ones.
+  static String _at(String path, Map<String, String?> query) {
+    final q = {
+      for (final e in query.entries)
+        if (e.value?.isNotEmpty ?? false) e.key: e.value!,
+    };
+    return Uri(path: path, queryParameters: q.isEmpty ? null : q).toString();
+  }
 
-  static Future<void> open(BuildContext context, Widget page) =>
-      _push<Object?>(context, page);
+  /// A module on the More tab, by its path.
+  static Future<void> open(BuildContext context, String path) =>
+      context.push<void>(path);
 
-  /// Pops `true` when stock changed.
+  /// Pops `true` when stock changed; null after a swipe back, so reload unless `false`.
   static Future<bool?> productDetail(
     BuildContext context,
     ProductItem product,
-  ) => _push<bool>(context, ProductDetailScreen(product: product));
+  ) => context.push<bool>(Paths.product(product.id), extra: product);
 
   static Future<void> spot(BuildContext context, String spotId) =>
-      _push<Object?>(context, SpotScreen(spotId: spotId));
+      context.push<void>(Paths.spot(spotId));
 
   static Future<void> findPiece(
     BuildContext context, {
     String? locationId,
     String? initialQuery,
-  }) => _push<Object?>(
-    context,
-    FindPieceScreen(locationId: locationId, initialQuery: initialQuery),
+  }) => context.push<void>(
+    _at(Paths.findPiece, {'q': initialQuery, 'location': locationId}),
   );
 
+  /// The store's name comes from the shop (or from [target]).
   static Future<void> waitingToShelve(
     BuildContext context, {
     required String locationId,
-    required String locationName,
     SpotContents? target,
-  }) => _push<Object?>(
-    context,
-    WaitingToShelveScreen(
-      locationId: locationId,
-      locationName: locationName,
-      target: target,
-    ),
+  }) => context.push<void>(
+    _at(Paths.putAway, {'location': locationId, 'spot': target?.spotId}),
+    extra: target,
   );
 
   static Future<void> customerDetail(BuildContext context, Customer customer) =>
-      _push<Object?>(
-        context,
-        CustomerDetailScreen(customerId: customer.id, preview: customer),
-      );
+      context.push<void>(Paths.customer(customer.id), extra: customer);
 
-  /// Pops `true` when the order changed.
+  /// Pops `true` when the order changed; null after a swipe back, so reload unless `false`.
   static Future<bool?> purchaseOrder(BuildContext context, String poId) =>
-      _push<bool>(context, PurchaseOrderScreen(poId: poId));
+      context.push<bool>(Paths.purchaseOrder(poId));
+
+  /// The purchase orders tab of More, e.g. `filter: 'open'` from the dashboard.
+  static void purchaseOrders(BuildContext context, {String? filter}) =>
+      context.go(_at(Paths.purchaseOrders, {'filter': filter}));
 
   /// Pops `true` when a delivery was received.
   static Future<bool?> receiveDelivery(
     BuildContext context,
     PurchaseOrderDetail po,
-  ) => _push<bool>(context, ReceiveDeliveryScreen(po: po));
+  ) => context.push<bool>(Paths.receiveDelivery(po.summary.id), extra: po);
 
   /// Orders waiting to go out from [location] (else the selected store), to pick together.
   static Future<void> pickOrders(
     BuildContext context, {
     StockLocation? location,
-  }) => _push<Object?>(context, PickOrdersScreen(location: location));
+  }) => context.push<void>(Paths.pickOrders, extra: location);
 
   /// Pops `true` when something was sent out.
   static Future<bool?> pickWalk(
     BuildContext context, {
     required String locationId,
     required List<String> orderIds,
-  }) => _push<bool>(
-    context,
-    PickWalkScreen(locationId: locationId, orderIds: orderIds),
+  }) => context.push<bool>(
+    _at(Paths.pickWalk, {'location': locationId, 'orders': orderIds.join(',')}),
   );
 
   /// Move pieces from one store to another.
   static Future<void> moveStock(BuildContext context) =>
-      _push<Object?>(context, const TransferScreen());
+      context.push<void>(Paths.transfers);
 
   static Future<void> stockCount(BuildContext context, String countId) =>
-      _push<Object?>(context, StockCountScreen(countId: countId));
+      context.push<void>(Paths.stockCount(countId));
+
+  static Future<void> orderDetail(BuildContext context, String orderId) =>
+      context.push<void>(Paths.order(orderId));
 
   /// A counter bill's receipt, from the order it belongs to.
   static Future<void> receipt(BuildContext context, String orderId) =>
-      _push<Object?>(context, ReceiptScreen(orderId: orderId));
+      context.push<void>(Paths.receipt(orderId));
 }

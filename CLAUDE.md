@@ -41,7 +41,7 @@ Dart SDK `^3.10.1` — the code uses null-aware map elements (`'clientId': ?clie
 ```
 lib/
   main.dart            bootstrap only: ApiClient.init, session + shop wiring, runApp
-  app/                 app.dart (ScaleezyApp, AuthGate), app_routes.dart (AppRoutes)
+  app/                 app.dart (ScaleezyApp), router.dart (go_router: Paths, redirects, routes), app_routes.dart (AppRoutes)
   core/                shared by every feature
     network/           api_client.dart (ApiClient, ApiException, dataOf), api_endpoints.dart (ApiEndpoints)
     session/           auth_session.dart (AuthSession, SessionScope), auth_user.dart (AuthUser)
@@ -60,7 +60,9 @@ Rules:
 - Imports are always `package:scaleezy/...` (lint-enforced).
 - Every backend path goes in `ApiEndpoints`. `test/core/network/api_endpoints_test.dart` pins each path; add a line there for a new one.
 - One repository per feature, one method per endpoint, with the required permission in its doc comment. Repositories take an optional `ApiClient` (for tests) and default to `ApiClient.instance`.
-- Every screen-to-screen push goes through a typed `AppRoutes` method. Bottom-tab switching stays in `MainNavigationScreen`.
+- Routing is `go_router`, built in `lib/app/router.dart`. Paths copy the website's (`inventory_frontend/src/App.jsx`) wherever both have the screen; they are constants in `Paths`, and `docs/routing.md` has the table. A new screen gets a route there, guarded by its permission (`_guard` shows `NoAccessScreen` in place, as the web's `<Guard>`).
+- Every screen-to-screen move goes through a typed `AppRoutes` method, which calls `context.push<T>(path, extra: …)` so an awaited result comes back and the caller can reload. Objects travel as `extra`; a route that needs one also fetches it by id when it is missing (an address opened directly). `go` is only for tabs, sign-in and the NoAccess way out: it never completes an awaited push. Bottom-tab switching stays in `MainNavigationScreen` (`selectTab`).
+- Sheets and dialogs open on the root navigator (`useRootNavigator: true`) so the bottom bar is not live behind them.
 - MVVM everywhere: no screen calls a repository or uses `setState` for data (remaining `setState` is purely visual: password visibility, torch, an expanded rack). The pattern, see `features/products/`:
   - The view model lives in `presentation/view_models/<screen>_view_model.dart` and extends `ViewModel` (`core/view_model/view_model.dart`, a `ChangeNotifier` that ignores notifications after dispose). It owns all loading, paging, filters and request guards, takes its repositories as optional constructor arguments, and never imports Flutter widgets.
   - The screen keeps only UI: controllers, dialogs, sheets and navigation. It takes an optional `viewModel` (tests pass one; otherwise it creates and disposes its own), rebuilds through `ListenableBuilder`, and imports no repository or `ApiClient`.
@@ -73,7 +75,7 @@ Rules:
 - `AuthSession` / `SessionScope` — signed-in user and permissions. `SessionScope.of(context).can('resource:action')` gates UI; `'*'` is the owner wildcard. Use `.read(context)` from `initState`/callbacks.
 - `ShopContext` / `ShopScope` — branding, store locations, and the selected store. Loaded/cleared by a listener on the session in `main.dart`.
 
-`AuthGate` (`lib/app/app.dart`) switches splash / `LoginScreen` / `MainNavigationScreen` on `AuthStatus`. A 401 from any call triggers `ApiClient.onUnauthorized` → session expires → back to login.
+The router's `redirect` (`authRedirect` in `lib/app/router.dart`, refreshed by the session) shows the splash while the session is unknown, `/login?from=<where you were>` when signed out, and after sign-in goes back to `from` or else to `firstLandingPath` (the web's order). A 401 from any call triggers `ApiClient.onUnauthorized` → session expires → back to login, with every pushed screen gone.
 
 **Network:**
 - `ApiClient` is a singleton (`ApiClient.init()` / `.instance`) over Dio. Auth is the backend's httpOnly `token` cookie kept in a `PersistCookieJar` (skipped on web). Selected store is sent as the `x-location-id` header (null = all stores). Long timeouts are deliberate (slow remote DB). A 429 interceptor retries up to twice, honouring `Retry-After` ≤ 20s.
@@ -82,8 +84,8 @@ Rules:
 
 **Models** are hand-written `fromJson` factories, no codegen, built on the `as*` helpers in `core/utils/json_parse.dart` (`asMoney`, `asInt`, `asString`, `asOptString`, `asDate` / `asDateOrNow`, `asMaps`, `asHexColor`). They must tolerate server quirks: Prisma decimals arrive as strings, fields may be absent when hidden by permission (e.g. cost), stock is summed across per-location rows. Each feature's `*_models_test.dart` pins these behaviours with real payload shapes; add a case when changing a parser.
 
-**Screens:** `MainNavigationScreen` is an `IndexedStack` of five tabs (Dashboard, Products, Scan, Orders, More). Tabs stay alive, so screens that depend on the selected store watch `ShopScope.of(context).revision` and reload when it changes (see `products_screen.dart`, `orders_screen.dart`). `ScannerScreen` takes `active` so the camera (`mobile_scanner`) runs only while its tab is shown. "More" modules are listed in `features/shell/presentation/more_screen.dart` with an optional permission filter.
+**Screens:** `MainNavigationScreen` is the bottom bar around a `StatefulShellRoute.indexedStack` of five tabs (Dashboard, Products, Scan, Orders, More), each with its own back stack; tapping the current tab returns it to its first screen, and back on another tab's first screen goes to Dashboard. Tabs stay alive, so screens that depend on the selected store watch `ShopScope.of(context).revision` and reload when it changes (see `products_screen.dart`, `orders_screen.dart`). `ScannerScreen` takes `active` (the router passes `TickerMode.of`) so the camera (`mobile_scanner`) runs only while its tab is shown. "More" modules are listed in `features/shell/presentation/more_screen.dart` by path, with an optional permission filter.
 
-**UI kit:** colours and theme in `core/theme/app_theme.dart` (`AppColors`, `AppTheme.lightTheme`). Reusable widgets are in `core/widgets/ui.dart` (`PageHeader`, `SurfaceCard`, `SearchField`, `Skeleton`, `Pressable`, `QuantityStepper`, `confirmAction`, …) and `core/widgets/async_state.dart` (`LoadingView`, `ErrorView`, `showMessage`). Contact helpers (`launchContact`, `whatsappNumber`, `avatarColour`) are in `core/utils/contact_utils.dart`. Reuse these rather than styling inline.
+**UI kit:** colours and theme in `core/theme/app_theme.dart` (`AppColors`, `AppTheme.lightTheme`). Reusable widgets are in `core/widgets/ui.dart` (`PageHeader`, `SurfaceCard`, `SearchField`, `Skeleton`, `Pressable`, `QuantityStepper`, `confirmAction`, …) and `core/widgets/async_state.dart` (`LoadingView`, `ErrorView`, `showMessage`); `core/widgets/no_access_screen.dart` is the page a role cannot open. Contact helpers (`launchContact`, `whatsappNumber`, `avatarColour`) are in `core/utils/contact_utils.dart`. Reuse these rather than styling inline.
 
 User-facing copy is plain language aimed at shop assistants.

@@ -1,7 +1,8 @@
 # Routing: the app mirrors the website's routes
 
-Researched 2026-10-12 from `inventory_frontend/src/App.jsx` and the app. The app uses `go_router`
-with paths that copy the web's wherever both have the screen. Web references: `W` =
+Researched 2026-10-12 from `inventory_frontend/src/App.jsx` and the app; built in `lib/app/router.dart`
+(`Paths`, `authRedirect`, `firstLandingPath`, `buildRouter`). The app uses `go_router` with paths that
+copy the web's wherever both have the screen. Web references: `W` =
 `../Scalezzy inventory /inventory_frontend/src`.
 
 ## Web facts the app follows
@@ -21,7 +22,10 @@ with paths that copy the web's wherever both have the screen. Web references: `W
 Shell: `StatefulShellRoute.indexedStack`, five branches = the bottom tabs (Dashboard, Products,
 Scan, Orders, More); each tab keeps its own back stack; tapping the current tab pops to its root.
 Browse/detail screens live in their tab's branch. Task flows holding local work, and screens
-reached from more than one tab, are top-level routes on the root navigator (full screen).
+reached from more than one tab, are top-level routes on the root navigator (full screen): they are
+declared outside the shell, before it, so a push from any tab never switches branch. The app's
+landing order is the web's without `/inventory` and `/returns` (no such screens): `/dashboard`,
+`/products`, `/orders`, `/inventory/purchase-orders`, `/customers`, else `/settings`.
 
 | Path | Screen | Permission | Navigator |
 |---|---|---|---|
@@ -35,16 +39,16 @@ reached from more than one tab, are top-level routes on the root navigator (full
 | `/orders/:id/receipt` | ReceiptScreen | sales_order:view | root |
 | `/more` | MoreScreen | — | More |
 | `/shelves` | ShelvesScreen | shelf:view | More |
-| `/shelves/pick` | PickOrdersScreen | shelf:putaway | More |
+| `/shelves/pick` | PickOrdersScreen (extra StockLocation, else the selected store) | shelf:putaway | More |
 | `/shelves/pick/walk?location=&orders=` | PickWalkScreen (→ bool) | shelf:putaway | root |
 | `/shelves/find?q=&location=` | FindPieceScreen (app-only) | shelf:view | root |
 | `/shelves/spots/:spotId` | SpotScreen (app-only) | shelf:view | root |
-| `/shelves/put-away?location=&spot=` | WaitingToShelveScreen | shelf:putaway | root |
+| `/shelves/put-away?location=&spot=` | WaitingToShelveScreen (extra SpotContents, else fetched; store name from the shop) | shelf:putaway | root |
 | `/inventory/audits` | StockCountsScreen | stock_count:view | More |
 | `/inventory/audits/:id` | StockCountScreen | stock_count:view | More |
 | `/inventory/purchase-orders?filter=` | PurchaseOrdersScreen | purchase_order:view | More |
 | `/inventory/purchase-orders/:id` | PurchaseOrderScreen (→ bool) | purchase_order:view | More |
-| `/inventory/purchase-orders/:id/receive` | ReceiveDeliveryScreen (→ bool) | purchase_order:receive | root |
+| `/inventory/purchase-orders/:id/receive` | ReceiveDeliveryScreen (→ bool; extra PurchaseOrderDetail, else fetched) | purchase_order:receive | root |
 | `/inventory/suppliers` | SuppliersScreen | supplier:view | More |
 | `/inventory/transfers` | TransferScreen | inventory:transfer | root |
 | `/customers` | CustomersScreen | customer:view | More |
@@ -61,10 +65,23 @@ reached from more than one tab, are top-level routes on the root navigator (full
   screens keep `Navigator.of(context).pop(x)`. Use `go` only for tabs, auth, deep links and the
   NoAccess escape — a `go` never completes an awaited push, which would break "reload on return".
 - Product detail and PO detail allow swipe-back (no `PopScope(canPop:false)` just to return a
-  result); callers reload unless the result is `false`.
+  result); their back button pops whether anything changed (`PageHeader.onBack`), a swipe or
+  Android back pops null, and callers reload unless the result is `false`.
 - Confirm before leaving: pick walk with unsent pieces (exists), receive delivery with counted
   lines, transfers with lines. Stock counts save per line, so no guard.
 - Sheets and dialogs stay imperative, opened on the root navigator.
+
+## As built (2026-10-12)
+
+- `from` is the tab-level address: go_router keeps pushed screens out of the location it hands the
+  redirect, so signing in again after a 401 on a pushed screen returns to that tab's address
+  (e.g. `/more`), not the pushed screen. Addresses opened with `go` come back exactly.
+- The Scan route passes `TickerMode.of(context)` as `active`: go_router turns tickers off in hidden
+  tabs, and the Navigator does under a full-screen page, so the camera also stops while e.g. Find
+  a piece covers the Scan tab, and starts again on return.
+- Dashboard's "Open Purchase Orders" tile goes to `?filter=open`, the list's "To receive" (sent or
+  part received); the tile's count also includes drafts.
+- The order page (was a sheet) adds "Try again" to its error, since a page cannot be swiped away.
 
 ## Deep links (not enabled)
 

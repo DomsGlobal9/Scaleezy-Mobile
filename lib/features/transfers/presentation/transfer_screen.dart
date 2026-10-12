@@ -102,11 +102,29 @@ class _TransferScreenState extends State<TransferScreen> {
     }
   }
 
+  Future<void> _leave() async {
+    final ok = await confirmAction(
+      context,
+      title: 'Leave without moving?',
+      message:
+          'The pieces you listed have not moved yet. Leaving forgets the list.',
+      confirmLabel: 'Leave',
+      danger: true,
+    );
+    if (ok && mounted) Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: _vm,
-      builder: (context, _) => _buildScreen(),
+      builder: (context, _) => PopScope(
+        canPop: _vm.lines.isEmpty,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _leave();
+        },
+        child: _buildScreen(),
+      ),
     );
   }
 
@@ -514,7 +532,6 @@ class _TransferScreenState extends State<TransferScreen> {
                   onPressed: () => AppRoutes.waitingToShelve(
                     context,
                     locationId: moved.to.id,
-                    locationName: moved.to.name,
                   ),
                   icon: const Icon(Icons.shelves),
                   label: Text(
