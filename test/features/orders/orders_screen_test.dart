@@ -1,11 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:scaleezy/app/router.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
+import 'package:scaleezy/features/orders/presentation/order_detail_screen.dart';
 import 'package:scaleezy/features/orders/presentation/orders_screen.dart';
+import 'package:scaleezy/features/orders/presentation/view_models/order_details_view_model.dart';
 import 'package:scaleezy/features/orders/presentation/view_models/orders_view_model.dart';
 
 import '../products/products_fakes.dart' show offlineClient;
 import 'orders_fakes.dart';
+
+/// The orders list and its detail page at their app paths, both answered by [repo].
+Widget ordersApp(FakeOrderRepository repo) => ShopScope(
+  shop: ShopContext(offlineClient()),
+  child: MaterialApp.router(
+    routerConfig: GoRouter(
+      initialLocation: Paths.orders,
+      routes: [
+        GoRoute(
+          path: Paths.orders,
+          builder: (_, _) => OrdersScreen(viewModel: OrdersViewModel(repo)),
+          routes: [
+            GoRoute(
+              path: ':id',
+              builder: (_, state) => OrderDetailScreen(
+                orderId: state.pathParameters['id']!,
+                viewModel: OrderDetailsViewModel(
+                  state.pathParameters['id']!,
+                  repo,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  ),
+);
 
 void main() {
   testWidgets('orders screen lists, filters and opens an order', (
@@ -18,13 +50,7 @@ void main() {
       ],
       detail: (id) async => orderDetail(id),
     );
-    final vm = OrdersViewModel(repo);
-    await tester.pumpWidget(
-      ShopScope(
-        shop: ShopContext(offlineClient()),
-        child: MaterialApp(home: OrdersScreen(viewModel: vm)),
-      ),
-    );
+    await tester.pumpWidget(ordersApp(repo));
     await tester.pumpAndSettle();
 
     expect(find.text('Priya Sharma'), findsOneWidget);
@@ -37,14 +63,17 @@ void main() {
 
     await tester.tap(find.text('Ravi Kumar'));
     await tester.pumpAndSettle();
+    expect(find.text('SO-b'), findsOneWidget);
     expect(find.text('Banarasi Saree'), findsOneWidget);
     // Not a counter bill: no receipt, as on the web.
     expect(find.text('Receipt'), findsNothing);
 
-    // Closing the sheet disposes its view model mid-animation without complaint.
-    Navigator.of(tester.element(find.text('Banarasi Saree'))).pop();
+    // Back from the page returns to the list as it was left.
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await tester.pumpAndSettle();
     expect(find.text('Banarasi Saree'), findsNothing);
+    expect(find.text('Ravi Kumar'), findsOneWidget);
+    expect(find.text('Priya Sharma'), findsNothing);
   });
 
   testWidgets('a counter bill offers its receipt', (tester) async {
@@ -54,14 +83,7 @@ void main() {
       ],
       detail: (id) async => orderDetail(id, atCounter: true),
     );
-    await tester.pumpWidget(
-      ShopScope(
-        shop: ShopContext(offlineClient()),
-        child: MaterialApp(
-          home: OrdersScreen(viewModel: OrdersViewModel(repo)),
-        ),
-      ),
-    );
+    await tester.pumpWidget(ordersApp(repo));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Priya Sharma'));

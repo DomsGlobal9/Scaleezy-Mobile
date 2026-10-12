@@ -31,7 +31,7 @@ class LoginViewModel extends ViewModel {
     notifyListeners();
     try {
       await _session.login(email, password, clientId: clientId);
-      // AuthGate swaps to the app when the session changes.
+      // The router redirects to the app when the session changes.
     } on WorkspaceChoiceRequired catch (e) {
       _workspaceChoice = e;
     } on ApiException catch (e) {

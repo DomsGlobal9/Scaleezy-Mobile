@@ -16,6 +16,7 @@ Future<String?> showScanSheet(
 }) {
   return showModalBottomSheet<String>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (_) => _ScanSheet(title: title, hint: hint, onCode: onCode),

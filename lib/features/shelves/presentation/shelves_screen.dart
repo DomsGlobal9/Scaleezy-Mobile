@@ -363,7 +363,6 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
                       await AppRoutes.waitingToShelve(
                         context,
                         locationId: t.locationId,
-                        locationName: t.locationName,
                       );
                       _vm.load();
                     },
@@ -528,6 +527,7 @@ class _SpotScreenState extends State<SpotScreen> {
     final s = _vm.spot!;
     final result = await showModalBottomSheet<(ShelfSpot?, int)>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppColors.bgCard,
       shape: const RoundedRectangleBorder(
@@ -562,7 +562,6 @@ class _SpotScreenState extends State<SpotScreen> {
     await AppRoutes.waitingToShelve(
       context,
       locationId: s.locationId,
-      locationName: s.locationName,
       target: s,
     );
     _vm.load();
@@ -1035,6 +1034,7 @@ class _WaitingToShelveScreenState extends State<WaitingToShelveScreen> {
   Future<void> _putAway(NotShelvedItem n) async {
     final result = await showModalBottomSheet<(ShelfSpot?, int)>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppColors.bgCard,
       shape: const RoundedRectangleBorder(

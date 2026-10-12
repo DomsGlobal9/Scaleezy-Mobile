@@ -106,6 +106,7 @@ class _StockCountsScreenState extends State<StockCountsScreen> {
     final shop = ShopScope.read(context);
     final created = await showModalBottomSheet<bool>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppColors.bgCard,
       shape: const RoundedRectangleBorder(
@@ -470,6 +471,7 @@ class _StockCountScreenState extends State<StockCountScreen> {
 
   Future<void> _edit(StockCountItem line) => showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: AppColors.bgCard,
     shape: const RoundedRectangleBorder(

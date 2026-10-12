@@ -56,7 +56,10 @@ class PurchaseOrdersScreen extends StatefulWidget {
   /// Tests pass their own; otherwise the screen makes and owns one.
   final PurchaseOrdersViewModel? viewModel;
 
-  const PurchaseOrdersScreen({super.key, this.viewModel});
+  /// The filter to start on, as in `?filter=open`; unknown values are ignored.
+  final String? filter;
+
+  const PurchaseOrdersScreen({super.key, this.viewModel, this.filter});
 
   @override
   State<PurchaseOrdersScreen> createState() => _PurchaseOrdersScreenState();
@@ -70,6 +73,10 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
   @override
   void initState() {
     super.initState();
+    final filter = widget.filter?.toUpperCase();
+    if (PurchaseOrdersViewModel.filters.containsKey(filter)) {
+      _vm.selectFilter(filter!);
+    }
     _vm.load();
   }
 
@@ -190,7 +197,8 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
     return SurfaceCard(
       onTap: () async {
         final changed = await AppRoutes.purchaseOrder(context, po.id);
-        if (changed == true) _vm.load();
+        // Null after a swipe back, when nobody knows: reload unless it said nothing changed.
+        if (changed != false) _vm.load();
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -304,241 +312,236 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
         po.summary.canReceive &&
         SessionScope.of(context).can('purchase_order:receive');
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.of(context).pop(_vm.changed);
-      },
-      child: Scaffold(
-        backgroundColor: AppColors.bgLight,
-        bottomNavigationBar: canReceive
-            ? SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                  child:
-                      FilledButton.icon(
-                        onPressed: _receive,
-                        icon: const Icon(Icons.move_to_inbox_rounded),
-                        label: const Text(
-                          'Receive Now',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                          ),
+    return Scaffold(
+      backgroundColor: AppColors.bgLight,
+      bottomNavigationBar: canReceive
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                child:
+                    FilledButton.icon(
+                      onPressed: _receive,
+                      icon: const Icon(Icons.move_to_inbox_rounded),
+                      label: const Text(
+                        'Receive Now',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
                         ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.accentGold,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                      ).animate().slideY(
-                        begin: 1,
-                        end: 0,
-                        duration: 400.ms,
-                        curve: Curves.easeOutCubic,
                       ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accentGold,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ).animate().slideY(
+                      begin: 1,
+                      end: 0,
+                      duration: 400.ms,
+                      curve: Curves.easeOutCubic,
+                    ),
+              ),
+            )
+          : null,
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: AppColors.accentGold,
+          onRefresh: _vm.load,
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
+              PageHeader(
+                title: po?.summary.poNumber ?? 'Purchase order',
+                subtitle: po?.summary.supplierName,
+                // Says whether anything changed; a swipe back pops null.
+                onBack: () => Navigator.of(context).pop(_vm.changed),
+              ),
+              if (po == null && error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 80),
+                  child: ErrorView(message: error, onRetry: _vm.load),
+                )
+              else if (po == null)
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Skeleton(height: 260, radius: 22),
+                )
+              else ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: SurfaceCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            _statusChip(po.summary.status),
+                            const Spacer(),
+                            if (_due(po.summary) != null)
+                              Text(
+                                _due(po.summary)!,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.accentBlue,
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '$received',
+                              style: const TextStyle(
+                                fontSize: 30,
+                                fontWeight: FontWeight.w900,
+                                height: 1,
+                              ),
+                            ),
+                            Text(
+                              ' / $ordered pieces received',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: TweenAnimationBuilder<double>(
+                            tween: Tween(
+                              begin: 0,
+                              end: ordered == 0 ? 0 : received / ordered,
+                            ),
+                            duration: const Duration(milliseconds: 900),
+                            curve: Curves.easeOutCubic,
+                            builder: (_, v, _) => LinearProgressIndicator(
+                              value: v,
+                              minHeight: 10,
+                              backgroundColor: AppColors.bgSurface,
+                              color: AppColors.accentSuccess,
+                            ),
+                          ),
+                        ),
+                        if (po.summary.totalAmount != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            'Order value ${formatRupees(po.summary.totalAmount!)}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                        if (po.summary.deliverTo != null)
+                          Text(
+                            'Deliver to ${po.summary.deliverTo}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        if (po.notes != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            po.notes!,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ).entrance(0),
                 ),
-              )
-            : null,
-        body: SafeArea(
-          child: RefreshIndicator(
-            color: AppColors.accentGold,
-            onRefresh: _vm.load,
-            child: ListView(
-              padding: const EdgeInsets.only(bottom: 24),
-              children: [
-                PageHeader(
-                  title: po?.summary.poNumber ?? 'Purchase order',
-                  subtitle: po?.summary.supplierName,
+                const SizedBox(height: 20),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: SectionHeader(title: 'Lines'),
                 ),
-                if (po == null && error != null)
+                for (final (i, l) in po.lines.indexed)
                   Padding(
-                    padding: const EdgeInsets.only(top: 80),
-                    child: ErrorView(message: error, onRetry: _vm.load),
-                  )
-                else if (po == null)
-                  const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Skeleton(height: 260, radius: 22),
-                  )
-                else ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                     child: SurfaceCard(
+                      padding: const EdgeInsets.all(14),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              _statusChip(po.summary.status),
-                              const Spacer(),
-                              if (_due(po.summary) != null)
-                                Text(
-                                  _due(po.summary)!,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.accentBlue,
-                                  ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      l.title,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    Text(
+                                      [
+                                        l.sku,
+                                        ?l.color,
+                                        if (l.size != null) 'Size ${l.size}',
+                                      ].join(' • '),
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
+                              ),
                               Text(
-                                '$received',
-                                style: const TextStyle(
-                                  fontSize: 30,
+                                '${l.received}/${l.ordered}',
+                                style: TextStyle(
                                   fontWeight: FontWeight.w900,
-                                  height: 1,
-                                ),
-                              ),
-                              Text(
-                                ' / $ordered pieces received',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: AppColors.textSecondary,
-                                  fontWeight: FontWeight.w600,
+                                  color: l.outstanding == 0
+                                      ? AppColors.accentSuccess
+                                      : AppColors.textPrimary,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 8),
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: TweenAnimationBuilder<double>(
-                              tween: Tween(
-                                begin: 0,
-                                end: ordered == 0 ? 0 : received / ordered,
-                              ),
-                              duration: const Duration(milliseconds: 900),
-                              curve: Curves.easeOutCubic,
-                              builder: (_, v, _) => LinearProgressIndicator(
-                                value: v,
-                                minHeight: 10,
-                                backgroundColor: AppColors.bgSurface,
-                                color: AppColors.accentSuccess,
-                              ),
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: l.ordered == 0
+                                  ? 0
+                                  : l.received / l.ordered,
+                              minHeight: 5,
+                              backgroundColor: AppColors.bgSurface,
+                              color: AppColors.accentSuccess,
                             ),
                           ),
-                          if (po.summary.totalAmount != null) ...[
-                            const SizedBox(height: 12),
+                          if (l.unitPrice != null) ...[
+                            const SizedBox(height: 6),
                             Text(
-                              'Order value ${formatRupees(po.summary.totalAmount!)}',
+                              '${formatRupees(l.unitPrice!)} each',
                               style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                          if (po.summary.deliverTo != null)
-                            Text(
-                              'Deliver to ${po.summary.deliverTo}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          if (po.notes != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              po.notes!,
-                              style: const TextStyle(
-                                fontSize: 12,
+                                fontSize: 11,
                                 color: AppColors.textMuted,
                               ),
                             ),
                           ],
                         ],
                       ),
-                    ).entrance(0),
+                    ).entrance(1 + i),
                   ),
-                  const SizedBox(height: 20),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: SectionHeader(title: 'Lines'),
-                  ),
-                  for (final (i, l) in po.lines.indexed)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                      child: SurfaceCard(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        l.title,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      Text(
-                                        [
-                                          l.sku,
-                                          ?l.color,
-                                          if (l.size != null) 'Size ${l.size}',
-                                        ].join(' • '),
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: AppColors.textMuted,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Text(
-                                  '${l.received}/${l.ordered}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    color: l.outstanding == 0
-                                        ? AppColors.accentSuccess
-                                        : AppColors.textPrimary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                value: l.ordered == 0
-                                    ? 0
-                                    : l.received / l.ordered,
-                                minHeight: 5,
-                                backgroundColor: AppColors.bgSurface,
-                                color: AppColors.accentSuccess,
-                              ),
-                            ),
-                            if (l.unitPrice != null) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                '${formatRupees(l.unitPrice!)} each',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textMuted,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ).entrance(1 + i),
-                    ),
-                ],
               ],
-            ),
+            ],
           ),
         ),
       ),
@@ -611,11 +614,29 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
     Navigator.of(context).pop(true);
   }
 
+  Future<void> _leave() async {
+    final ok = await confirmAction(
+      context,
+      title: 'Leave without receiving?',
+      message:
+          'The pieces you counted are not added to stock yet. Leaving forgets the count.',
+      confirmLabel: 'Leave',
+      danger: true,
+    );
+    if (ok && mounted) Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: _vm,
-      builder: (context, _) => _buildScreen(),
+      builder: (context, _) => PopScope(
+        canPop: _vm.total == 0,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _leave();
+        },
+        child: _buildScreen(),
+      ),
     );
   }
 

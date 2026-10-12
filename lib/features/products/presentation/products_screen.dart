@@ -57,7 +57,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   Future<void> _open(ProductItem p) async {
     final changed = await AppRoutes.productDetail(context, p);
-    if (changed == true) _vm.reload();
+    // Null after a swipe back, when nobody knows: reload unless it said nothing changed.
+    if (changed != false) _vm.reload();
   }
 
   void _showFilters() {
@@ -65,6 +66,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     var status = _vm.status;
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: AppColors.bgCard,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

@@ -1,19 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'package:scaleezy/app/app_routes.dart';
+import 'package:scaleezy/app/router.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
-import 'package:scaleezy/features/customers/presentation/customers_screen.dart';
-import 'package:scaleezy/features/day_book/presentation/day_book_screen.dart';
-import 'package:scaleezy/features/purchase_orders/presentation/purchase_orders_screen.dart';
-import 'package:scaleezy/features/settings/presentation/settings_screen.dart';
-import 'package:scaleezy/features/shelves/presentation/shelves_screen.dart';
-import 'package:scaleezy/features/stock_counts/presentation/stock_counts_screen.dart';
-import 'package:scaleezy/features/suppliers/presentation/suppliers_screen.dart';
-import 'package:scaleezy/features/team/presentation/team_screen.dart';
-import 'package:scaleezy/features/transfers/presentation/transfer_screen.dart';
 
 class _Module {
   final IconData icon;
@@ -22,7 +14,7 @@ class _Module {
   final Color color;
   final Color bg;
   final String? permission;
-  final Widget Function() page;
+  final String path;
 
   /// Shown only when the shop fits, beyond the permission.
   final bool Function(ShopContext shop)? onlyIf;
@@ -34,16 +26,14 @@ class _Module {
     this.color,
     this.bg,
     this.permission,
-    this.page, {
+    this.path, {
     this.onlyIf,
   });
 }
 
 /// Everything beyond the four main tabs. A module only shows when the role can open it.
 class MoreScreen extends StatelessWidget {
-  final void Function(int tab)? onNavigateTab;
-
-  const MoreScreen({super.key, this.onNavigateTab});
+  const MoreScreen({super.key});
 
   static final _modules = <_Module>[
     _Module(
@@ -53,7 +43,7 @@ class MoreScreen extends StatelessWidget {
       AppColors.accentGold,
       AppColors.accentGoldLight,
       'shelf:view',
-      () => const ShelvesScreen(),
+      Paths.shelves,
     ),
     _Module(
       Icons.fact_check_rounded,
@@ -62,7 +52,7 @@ class MoreScreen extends StatelessWidget {
       AppColors.accentDanger,
       AppColors.accentDangerLight,
       'stock_count:view',
-      () => const StockCountsScreen(),
+      Paths.stockCounts,
     ),
     _Module(
       Icons.move_to_inbox_rounded,
@@ -71,7 +61,7 @@ class MoreScreen extends StatelessWidget {
       AppColors.accentBlue,
       AppColors.accentBlueLight,
       'purchase_order:view',
-      () => const PurchaseOrdersScreen(),
+      Paths.purchaseOrders,
     ),
     _Module(
       Icons.swap_horiz_rounded,
@@ -80,7 +70,7 @@ class MoreScreen extends StatelessWidget {
       AppColors.textPrimary,
       AppColors.bgSurface,
       'inventory:transfer',
-      () => const TransferScreen(),
+      Paths.transfers,
       // Moving needs two real stores; the online shop does not count.
       onlyIf: (shop) =>
           shop.locations.where((l) => l.type != 'ONLINE').length >= 2,
@@ -92,7 +82,7 @@ class MoreScreen extends StatelessWidget {
       AppColors.accentPurple,
       AppColors.accentPurpleLight,
       'customer:view',
-      () => const CustomersScreen(),
+      Paths.customers,
     ),
     _Module(
       Icons.menu_book_rounded,
@@ -101,7 +91,7 @@ class MoreScreen extends StatelessWidget {
       AppColors.accentDanger,
       AppColors.accentDangerLight,
       'report:financial',
-      () => const DayBookScreen(),
+      Paths.dayBook,
     ),
     _Module(
       Icons.handshake_rounded,
@@ -110,7 +100,7 @@ class MoreScreen extends StatelessWidget {
       AppColors.accentSuccess,
       AppColors.accentSuccessLight,
       'supplier:view',
-      () => const SuppliersScreen(),
+      Paths.suppliers,
     ),
     _Module(
       Icons.badge_rounded,
@@ -119,7 +109,7 @@ class MoreScreen extends StatelessWidget {
       AppColors.accentWarning,
       const Color(0xFFFFFBEB),
       'admin:users',
-      () => const TeamScreen(),
+      Paths.team,
     ),
   ];
 
@@ -133,7 +123,7 @@ class MoreScreen extends StatelessWidget {
         .where((m) => m.onlyIf?.call(shop) ?? true)
         .toList();
 
-    void open(Widget page) => AppRoutes.open(context, page);
+    void open(String path) => AppRoutes.open(context, path);
 
     return Scaffold(
       backgroundColor: AppColors.bgLight,
@@ -152,7 +142,7 @@ class MoreScreen extends StatelessWidget {
             const SizedBox(height: 14),
             // Who is signed in, and where
             Pressable(
-              onTap: () => open(const SettingsScreen()),
+              onTap: () => open(Paths.settings),
               child: Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
@@ -232,7 +222,7 @@ class MoreScreen extends StatelessWidget {
                 children: [
                   for (final (i, m) in modules.indexed)
                     SurfaceCard(
-                      onTap: () => open(m.page()),
+                      onTap: () => open(m.path),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -276,7 +266,7 @@ class MoreScreen extends StatelessWidget {
                   _row(
                     Icons.person_outline_rounded,
                     'Profile and shop details',
-                    () => open(const SettingsScreen()),
+                    () => open(Paths.settings),
                   ),
                   const Divider(height: 1, indent: 56),
                   _row(Icons.logout_rounded, 'Sign out', () async {

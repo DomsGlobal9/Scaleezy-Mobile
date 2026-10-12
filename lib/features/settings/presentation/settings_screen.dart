@@ -77,6 +77,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'At least 8 characters',
                 onTap: () => showModalBottomSheet(
                   context: context,
+                  useRootNavigator: true,
                   isScrollControlled: true,
                   backgroundColor: AppColors.bgCard,
                   shape: const RoundedRectangleBorder(
@@ -189,10 +190,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'You will need your email and password to come back in.',
                     confirmLabel: 'Sign out',
                   )) {
+                    // The router then shows sign-in, with every screen above it gone.
                     await _vm.signOut();
-                    if (context.mounted) {
-                      Navigator.of(context).popUntil((r) => r.isFirst);
-                    }
                   }
                 },
                 icon: const Icon(Icons.logout_rounded),
@@ -297,6 +296,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final controller = TextEditingController(text: initial);
     await showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppColors.bgCard,
       shape: const RoundedRectangleBorder(

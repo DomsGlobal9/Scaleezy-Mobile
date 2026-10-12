@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 
+import 'package:scaleezy/app/app_routes.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/shop/shop_models.dart';
@@ -81,6 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = session.user;
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: AppColors.bgCard,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -850,7 +852,9 @@ class _HomeScreenState extends State<HomeScreen> {
             'Draft, sent or part received',
             AppColors.accentBlue,
             AppColors.accentBlueLight,
-            null,
+            SessionScope.of(context).can('purchase_order:view')
+                ? () => AppRoutes.purchaseOrders(context, filter: 'open')
+                : null,
           ),
           (
             Icons.inventory_2_outlined,

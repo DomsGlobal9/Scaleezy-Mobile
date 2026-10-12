@@ -349,11 +349,15 @@ class PageHeader extends StatelessWidget {
   final String? subtitle;
   final List<Widget> actions;
 
+  /// Instead of a plain pop, e.g. to pop a result.
+  final VoidCallback? onBack;
+
   const PageHeader({
     super.key,
     required this.title,
     this.subtitle,
     this.actions = const [],
+    this.onBack,
   });
 
   @override
@@ -365,7 +369,7 @@ class PageHeader extends StatelessWidget {
         children: [
           if (canPop)
             IconButton(
-              onPressed: () => Navigator.of(context).maybePop(),
+              onPressed: onBack ?? () => Navigator.of(context).maybePop(),
               icon: const Icon(Icons.arrow_back_rounded),
             )
           else

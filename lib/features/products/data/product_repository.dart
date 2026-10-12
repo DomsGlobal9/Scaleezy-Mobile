@@ -43,6 +43,12 @@ class ProductRepository {
     );
   }
 
+  /// product:view. One product with its variantSummary but no variants or photos (those are
+  /// [getProductVariants]); answers `{success, data}`.
+  Future<ProductItem> getProduct(String id) async => ProductItem.fromJson(
+    asMap(dataOf(await _api.get(ApiEndpoints.product(id)))),
+  );
+
   /// product:view. Full variant rows with stock per location; /products/:id leaves them out.
   Future<List<VariantItem>> getProductVariants(String productId) async =>
       asMaps(

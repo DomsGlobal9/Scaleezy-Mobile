@@ -12,7 +12,8 @@ import 'package:scaleezy/features/products/data/product_models.dart';
 import 'package:scaleezy/features/products/presentation/view_models/product_detail_view_model.dart';
 
 /// One product: its photographs, every size and colour, where each piece is, and what happened
-/// to it. Pops `true` when stock was moved so the products list can refresh.
+/// to it. Its back button pops `true` when stock was moved (`false` if not) so the products list
+/// can refresh; a swipe back pops null.
 class ProductDetailScreen extends StatefulWidget {
   final ProductItem product;
 
@@ -68,197 +69,189 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final colours = _vm.colours;
     final heroPhoto = _vm.heroPhoto;
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.of(context).pop(_vm.changed);
-      },
-      child: Scaffold(
-        backgroundColor: AppColors.bgLight,
-        body: RefreshIndicator(
-          color: AppColors.accentGold,
-          onRefresh: _vm.load,
-          child: CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                expandedHeight: 360,
-                pinned: true,
-                stretch: true,
-                backgroundColor: AppColors.bgCard,
-                surfaceTintColor: Colors.transparent,
-                leading: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: CircleAvatar(
-                    backgroundColor: Colors.white.withValues(alpha: 0.92),
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_rounded,
-                        color: AppColors.textPrimary,
-                        size: 20,
-                      ),
-                      onPressed: () => Navigator.of(context).pop(_vm.changed),
+    return Scaffold(
+      backgroundColor: AppColors.bgLight,
+      body: RefreshIndicator(
+        color: AppColors.accentGold,
+        onRefresh: _vm.load,
+        child: CustomScrollView(
+          slivers: [
+            SliverAppBar(
+              expandedHeight: 360,
+              pinned: true,
+              stretch: true,
+              backgroundColor: AppColors.bgCard,
+              surfaceTintColor: Colors.transparent,
+              leading: Padding(
+                padding: const EdgeInsets.all(8),
+                child: CircleAvatar(
+                  backgroundColor: Colors.white.withValues(alpha: 0.92),
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: AppColors.textPrimary,
+                      size: 20,
                     ),
+                    onPressed: () => Navigator.of(context).pop(_vm.changed),
                   ),
                 ),
-                flexibleSpace: FlexibleSpaceBar(
-                  stretchModes: const [StretchMode.zoomBackground],
-                  background: Hero(
-                    tag: ProductDetailScreen.heroTag(p.id),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 350),
-                      child: NetImage(
-                        key: ValueKey(heroPhoto),
-                        url: heroPhoto,
-                        width: double.infinity,
-                        height: double.infinity,
-                        radius: 0,
-                      ),
+              ),
+              flexibleSpace: FlexibleSpaceBar(
+                stretchModes: const [StretchMode.zoomBackground],
+                background: Hero(
+                  tag: ProductDetailScreen.heroTag(p.id),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 350),
+                    child: NetImage(
+                      key: ValueKey(heroPhoto),
+                      url: heroPhoto,
+                      width: double.infinity,
+                      height: double.infinity,
+                      radius: 0,
                     ),
                   ),
                 ),
               ),
-              SliverToBoxAdapter(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    color: AppColors.bgLight,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(28),
+            ),
+            SliverToBoxAdapter(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: AppColors.bgLight,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                transform: Matrix4.translationValues(0, -24, 0),
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final t in [
+                          p.category,
+                          p.productType.replaceAll('_', ' '),
+                          if (p.fabric.isNotEmpty) p.fabric,
+                        ])
+                          if (t.isNotEmpty) _pill(t),
+                        if (p.status != 'ACTIVE') _pill(p.status, warn: true),
+                      ],
                     ),
-                  ),
-                  transform: Matrix4.translationValues(0, -24, 0),
-                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (final t in [
-                            p.category,
-                            p.productType.replaceAll('_', ' '),
-                            if (p.fabric.isNotEmpty) p.fabric,
-                          ])
-                            if (t.isNotEmpty) _pill(t),
-                          if (p.status != 'ACTIVE') _pill(p.status, warn: true),
-                        ],
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            p.title,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.6,
+                              height: 1.15,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          formatRupees(p.basePrice),
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.accentGold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      p.productCode,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        _stat('${_vm.variantCount}', 'Sizes & colours'),
+                        const SizedBox(width: 10),
+                        _stat('${_vm.pieces}', 'Pieces'),
+                        const SizedBox(width: 10),
+                        _stat(
+                          '${_vm.lowOrOut}',
+                          'Low / out',
+                          warn: _vm.warnLow,
+                        ),
+                      ],
+                    ),
+                    if (colours.length > 1) ...[
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Colours',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 10),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              p.title,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.6,
-                                height: 1.15,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            formatRupees(p.basePrice),
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.accentGold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        p.productCode,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textMuted,
-                          fontFamily: 'monospace',
+                      SizedBox(
+                        height: 86,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: [
+                            _colourChip(null, 'All', null, null),
+                            for (final c in colours)
+                              _colourChip(c.$1, c.$1, c.$2, c.$3),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          _stat('${_vm.variantCount}', 'Sizes & colours'),
-                          const SizedBox(width: 10),
-                          _stat('${_vm.pieces}', 'Pieces'),
-                          const SizedBox(width: 10),
-                          _stat(
-                            '${_vm.lowOrOut}',
-                            'Low / out',
-                            warn: _vm.warnLow,
-                          ),
-                        ],
-                      ),
-                      if (colours.length > 1) ...[
-                        const SizedBox(height: 20),
-                        const Text(
-                          'Colours',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          height: 86,
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            children: [
-                              _colourChip(null, 'All', null, null),
-                              for (final c in colours)
-                                _colourChip(c.$1, c.$1, c.$2, c.$3),
-                            ],
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 14),
                     ],
-                  ),
+                    const SizedBox(height: 14),
+                  ],
                 ),
               ),
-              if (_vm.variants == null && _vm.error != null)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: ErrorView(message: _vm.error!, onRetry: _vm.load),
-                )
-              else if (_vm.variants == null)
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  sliver: SliverList.list(
-                    children: [
-                      for (var i = 0; i < 3; i++) ...[
-                        const Skeleton(height: 130, radius: 20),
-                        const SizedBox(height: 10),
-                      ],
+            ),
+            if (_vm.variants == null && _vm.error != null)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: ErrorView(message: _vm.error!, onRetry: _vm.load),
+              )
+            else if (_vm.variants == null)
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                sliver: SliverList.list(
+                  children: [
+                    for (var i = 0; i < 3; i++) ...[
+                      const Skeleton(height: 130, radius: 20),
+                      const SizedBox(height: 10),
                     ],
-                  ),
-                )
-              else if (variants.isEmpty)
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: ErrorView(
-                    message: 'This product has no sizes or colours yet.',
-                  ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
-                  sliver: SliverList.separated(
-                    itemCount: variants.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (_, i) => _VariantCard(
-                      key: ValueKey(variants[i].id),
-                      variant: variants[i],
-                      onMove: (inbound) => _move(variants[i], inbound),
-                      loadHistory: () => _vm.history(variants[i].id),
-                    ).entrance(i),
-                  ),
+                  ],
                 ),
-            ],
-          ),
+              )
+            else if (variants.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: ErrorView(
+                  message: 'This product has no sizes or colours yet.',
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+                sliver: SliverList.separated(
+                  itemCount: variants.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (_, i) => _VariantCard(
+                    key: ValueKey(variants[i].id),
+                    variant: variants[i],
+                    onMove: (inbound) => _move(variants[i], inbound),
+                    loadHistory: () => _vm.history(variants[i].id),
+                  ).entrance(i),
+                ),
+              ),
+          ],
         ),
       ),
     );
