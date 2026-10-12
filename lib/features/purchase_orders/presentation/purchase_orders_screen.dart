@@ -3,7 +3,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 
 import 'package:scaleezy/app/app_routes.dart';
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/money.dart';
@@ -11,7 +10,9 @@ import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/scan_sheet.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/purchase_orders/data/purchase_order_models.dart';
-import 'package:scaleezy/features/purchase_orders/data/purchase_order_repository.dart';
+import 'package:scaleezy/features/purchase_orders/presentation/view_models/purchase_order_view_model.dart';
+import 'package:scaleezy/features/purchase_orders/presentation/view_models/purchase_orders_view_model.dart';
+import 'package:scaleezy/features/purchase_orders/presentation/view_models/receive_delivery_view_model.dart';
 
 (Color, Color) _statusColours(String status) => switch (status) {
   'DRAFT' => (AppColors.accentWarning, const Color(0xFFFFFBEB)),
@@ -52,7 +53,10 @@ String? _due(PurchaseOrderSummary po) {
 }
 
 class PurchaseOrdersScreen extends StatefulWidget {
-  const PurchaseOrdersScreen({super.key});
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final PurchaseOrdersViewModel? viewModel;
+
+  const PurchaseOrdersScreen({super.key, this.viewModel});
 
   @override
   State<PurchaseOrdersScreen> createState() => _PurchaseOrdersScreenState();
@@ -60,44 +64,32 @@ class PurchaseOrdersScreen extends StatefulWidget {
 
 class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
   final _date = DateFormat('d MMM');
-  List<PurchaseOrderSummary>? _all;
-  String? _error;
-  String _filter = 'OPEN';
-
-  static const _filters = {
-    'OPEN': 'To receive',
-    'DRAFT': 'Draft',
-    'RECEIVED': 'Received',
-    'CANCELLED': 'Cancelled',
-    'ALL': 'All',
-  };
+  late final PurchaseOrdersViewModel _vm =
+      widget.viewModel ?? PurchaseOrdersViewModel();
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _vm.load();
   }
 
-  Future<void> _load() async {
-    setState(() => _error = null);
-    try {
-      final list = await PurchaseOrderRepository().purchaseOrders();
-      if (mounted) setState(() => _all = list);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    }
+  @override
+  void dispose() {
+    if (widget.viewModel == null) _vm.dispose();
+    super.dispose();
   }
-
-  bool _matches(PurchaseOrderSummary po, String f) => switch (f) {
-    'OPEN' => po.canReceive,
-    'ALL' => true,
-    _ => po.status == f,
-  };
 
   @override
   Widget build(BuildContext context) {
-    final all = _all ?? const <PurchaseOrderSummary>[];
-    final list = all.where((po) => _matches(po, _filter)).toList();
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
+    final list = _vm.visible;
+    final error = _vm.error;
 
     return Scaffold(
       backgroundColor: AppColors.bgLight,
@@ -106,9 +98,9 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
           children: [
             PageHeader(
               title: 'Purchase Orders',
-              subtitle: _all == null
+              subtitle: _vm.all == null
                   ? null
-                  : '${all.where((p) => p.canReceive).length} waiting to be received',
+                  : '${_vm.count('OPEN')} waiting to be received',
             ),
             SizedBox(
               height: 42,
@@ -116,32 +108,32 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 children: [
-                  for (final e in _filters.entries)
+                  for (final e in PurchaseOrdersViewModel.filters.entries)
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: Pressable(
-                        onTap: () => setState(() => _filter = e.key),
+                        onTap: () => _vm.selectFilter(e.key),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 220),
                           padding: const EdgeInsets.symmetric(horizontal: 14),
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: _filter == e.key
+                            color: _vm.filter == e.key
                                 ? AppColors.textPrimary
                                 : AppColors.bgCard,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: _filter == e.key
+                              color: _vm.filter == e.key
                                   ? AppColors.textPrimary
                                   : AppColors.borderLight,
                             ),
                           ),
                           child: Text(
-                            '${e.value}  ${all.where((p) => _matches(p, e.key)).length}',
+                            '${e.value}  ${_vm.count(e.key)}',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
-                              color: _filter == e.key
+                              color: _vm.filter == e.key
                                   ? Colors.white
                                   : AppColors.textSecondary,
                             ),
@@ -154,9 +146,9 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
             ),
             const SizedBox(height: 10),
             Expanded(
-              child: _all == null && _error != null
-                  ? ErrorView(message: _error!, onRetry: _load)
-                  : _all == null
+              child: _vm.all == null && error != null
+                  ? ErrorView(message: error, onRetry: _vm.load)
+                  : _vm.all == null
                   ? ListView(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       children: [
@@ -169,13 +161,13 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
                     )
                   : list.isEmpty
                   ? ErrorView(
-                      message: _filter == 'OPEN'
+                      message: _vm.filter == 'OPEN'
                           ? 'Nothing is waiting to be received.'
                           : 'No purchase orders here.',
                     )
                   : RefreshIndicator(
                       color: AppColors.accentGold,
-                      onRefresh: _load,
+                      onRefresh: _vm.load,
                       child: ListView.builder(
                         padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
                         itemCount: list.length,
@@ -198,7 +190,7 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
     return SurfaceCard(
       onTap: () async {
         final changed = await AppRoutes.purchaseOrder(context, po.id);
-        if (changed == true) _load();
+        if (changed == true) _vm.load();
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -263,46 +255,50 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
 
 class PurchaseOrderScreen extends StatefulWidget {
   final String poId;
-  const PurchaseOrderScreen({super.key, required this.poId});
+
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final PurchaseOrderViewModel? viewModel;
+
+  const PurchaseOrderScreen({super.key, required this.poId, this.viewModel});
 
   @override
   State<PurchaseOrderScreen> createState() => _PurchaseOrderScreenState();
 }
 
 class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
-  PurchaseOrderDetail? _po;
-  String? _error;
-  bool _changed = false;
+  late final PurchaseOrderViewModel _vm =
+      widget.viewModel ?? PurchaseOrderViewModel(widget.poId);
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _vm.load();
   }
 
-  Future<void> _load() async {
-    setState(() => _error = null);
-    try {
-      final po = await PurchaseOrderRepository().purchaseOrder(widget.poId);
-      if (mounted) setState(() => _po = po);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    }
+  @override
+  void dispose() {
+    if (widget.viewModel == null) _vm.dispose();
+    super.dispose();
   }
 
   Future<void> _receive() async {
-    final done = await AppRoutes.receiveDelivery(context, _po!);
-    if (done == true) {
-      _changed = true;
-      _load();
-    }
+    final done = await AppRoutes.receiveDelivery(context, _vm.po!);
+    if (done == true) _vm.deliveryReceived();
   }
 
   @override
   Widget build(BuildContext context) {
-    final po = _po;
-    final ordered = po?.lines.fold<int>(0, (a, l) => a + l.ordered) ?? 0;
-    final received = po?.lines.fold<int>(0, (a, l) => a + l.received) ?? 0;
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
+    final po = _vm.po;
+    final error = _vm.error;
+    final ordered = _vm.ordered;
+    final received = _vm.received;
     final canReceive =
         po != null &&
         po.summary.canReceive &&
@@ -311,7 +307,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.of(context).pop(_changed);
+        if (!didPop) Navigator.of(context).pop(_vm.changed);
       },
       child: Scaffold(
         backgroundColor: AppColors.bgLight,
@@ -349,7 +345,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
         body: SafeArea(
           child: RefreshIndicator(
             color: AppColors.accentGold,
-            onRefresh: _load,
+            onRefresh: _vm.load,
             child: ListView(
               padding: const EdgeInsets.only(bottom: 24),
               children: [
@@ -357,10 +353,10 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                   title: po?.summary.poNumber ?? 'Purchase order',
                   subtitle: po?.summary.supplierName,
                 ),
-                if (po == null && _error != null)
+                if (po == null && error != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 80),
-                    child: ErrorView(message: _error!, onRetry: _load),
+                    child: ErrorView(message: error, onRetry: _vm.load),
                   )
                 else if (po == null)
                   const Padding(
@@ -552,32 +548,29 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
 
 class ReceiveDeliveryScreen extends StatefulWidget {
   final PurchaseOrderDetail po;
-  const ReceiveDeliveryScreen({super.key, required this.po});
+
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final ReceiveDeliveryViewModel? viewModel;
+
+  const ReceiveDeliveryScreen({super.key, required this.po, this.viewModel});
 
   @override
   State<ReceiveDeliveryScreen> createState() => _ReceiveDeliveryScreenState();
 }
 
 class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
-  late final List<PurchaseOrderLine> _lines = widget.po.lines
-      .where((l) => l.outstanding > 0)
-      .toList();
-  late final Map<String, int> _qty = {for (final l in _lines) l.id: 0};
+  late final ReceiveDeliveryViewModel _vm =
+      widget.viewModel ?? ReceiveDeliveryViewModel(widget.po);
   late final _receivedBy = TextEditingController(
     text: SessionScope.read(context).user?.name ?? '',
   );
   final _reference = TextEditingController();
-  // One key for this delivery: if a slow submit is retried, the server counts it once.
-  final _requestKey = PurchaseOrderRepository.newRequestKey();
-  bool _busy = false;
-  String? _error;
-
-  int get _total => _qty.values.fold(0, (a, b) => a + b);
 
   @override
   void dispose() {
     _receivedBy.dispose();
     _reference.dispose();
+    if (widget.viewModel == null) _vm.dispose();
     super.dispose();
   }
 
@@ -587,36 +580,16 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
       context,
       title: 'Scan each piece',
       hint: 'One scan = one piece',
-      onCode: (code) async {
-        final line = _lines
-            .where((l) => l.barcode == code || l.sku == code)
-            .firstOrNull;
-        if (line == null) return 'Not on this order: $code';
-        final now = _qty[line.id]!;
-        if (now >= line.outstanding) {
-          return 'All ${line.outstanding} of ${line.title} already counted';
-        }
-        setState(() => _qty[line.id] = now + 1);
-        return '+1  ${line.title}  (${now + 1}/${line.outstanding})';
-      },
+      onCode: (code) async => _vm.scan(code),
     );
   }
 
   Future<void> _submit() async {
-    if (_total == 0) {
-      setState(() => _error = 'Count at least one piece first.');
-      return;
-    }
-    if (_receivedBy.text.trim().length < 2) {
-      setState(
-        () => _error = 'Enter the name of the person who received the goods.',
-      );
-      return;
-    }
-    final lines = _lines.where((l) => _qty[l.id]! > 0).length;
+    if (_vm.validate(_receivedBy.text) != null) return;
+    final lines = _vm.countedLines;
     final ok = await confirmAction(
       context,
-      title: 'Add $_total pieces to stock?',
+      title: 'Add ${_vm.total} pieces to stock?',
       message:
           '$lines ${lines == 1 ? 'line' : 'lines'} of ${widget.po.summary.poNumber} from ${widget.po.summary.supplierName}'
           '${widget.po.summary.deliverTo != null ? ' into ${widget.po.summary.deliverTo}' : ''}. '
@@ -625,34 +598,31 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
     );
     if (!ok || !mounted) return;
 
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await PurchaseOrderRepository().receivePurchaseOrder(
-        widget.po.summary.id,
-        quantities: _qty,
-        receivedByName: _receivedBy.text,
-        supplierReference: _reference.text,
-        requestKey: _requestKey,
-      );
-      if (!mounted) return;
-      showMessage(context, 'Received $_total pieces.', success: true);
-      Navigator.of(context).pop(true);
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = e.message;
-        });
-      }
+    final error = await _vm.receive(
+      receivedBy: _receivedBy.text,
+      reference: _reference.text,
+    );
+    if (!mounted) return;
+    if (error != null) {
+      showMessage(context, error, error: true);
+      return;
     }
+    showMessage(context, 'Received ${_vm.total} pieces.', success: true);
+    Navigator.of(context).pop(true);
   }
 
   @override
   Widget build(BuildContext context) {
-    final outstanding = _lines.fold<int>(0, (a, l) => a + l.outstanding);
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
+    final outstanding = _vm.outstanding;
+    final total = _vm.total;
+    final error = _vm.error;
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       bottomNavigationBar: SafeArea(
@@ -661,11 +631,11 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_error != null)
+              if (error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text(
-                    _error!,
+                    error,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: AppColors.accentDanger,
@@ -676,7 +646,7 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _busy ? null : _submit,
+                  onPressed: _vm.busy ? null : _submit,
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.accentGold,
                     padding: const EdgeInsets.symmetric(vertical: 16),
@@ -684,7 +654,7 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
-                  child: _busy
+                  child: _vm.busy
                       ? const SizedBox(
                           width: 20,
                           height: 20,
@@ -694,9 +664,9 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
                           ),
                         )
                       : Text(
-                          _total == 0
+                          total == 0
                               ? 'Count the pieces'
-                              : 'Receive $_total pieces',
+                              : 'Receive $total pieces',
                           style: const TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 15,
@@ -744,11 +714,7 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () => setState(() {
-                        for (final l in _lines) {
-                          _qty[l.id] = l.outstanding;
-                        }
-                      }),
+                      onPressed: _vm.allArrived,
                       icon: const Icon(Icons.done_all_rounded),
                       label: const Text(
                         'All arrived',
@@ -768,19 +734,19 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            for (final (i, l) in _lines.indexed)
+            for (final (i, l) in _vm.lines.indexed)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 250),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: _qty[l.id]! == l.outstanding
+                    color: _vm.qty(l.id) == l.outstanding
                         ? AppColors.accentSuccessLight
                         : AppColors.bgCard,
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color: _qty[l.id]! == l.outstanding
+                      color: _vm.qty(l.id) == l.outstanding
                           ? AppColors.accentSuccess.withValues(alpha: 0.3)
                           : AppColors.borderLight,
                     ),
@@ -820,9 +786,9 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
                         ),
                       ),
                       QuantityStepper(
-                        value: _qty[l.id]!,
+                        value: _vm.qty(l.id),
                         max: l.outstanding,
-                        onChanged: (v) => setState(() => _qty[l.id] = v),
+                        onChanged: (v) => _vm.setQty(l.id, v),
                       ),
                     ],
                   ),
