@@ -21,6 +21,8 @@ Both live under `../Scalezzy inventory /` (note the trailing space in the folder
 
 **`inventory_frontend`** (React 19 + Vite + react-query) is the reference for **screens and user flows**. It is the full product: cookie login, `<Guard permission=…>` on every business route, store picker, ~77 routes in `src/App.jsx`, pages in `src/pages/` (sales/, shelves/, inventory/, settings/, …), data calls in `src/hooks/` and `src/services/`. Its UI is English only (only its help center is translated). Brand is lime/deep green with light and dark themes; the app matches it (`docs/design.md`).
 
+**The plan to reach full parity is `docs/PLAN.md`** (phases, definition of done incl. a button matrix and edge-case tests, upstream sync procedure, tracker, open decisions). Follow it; update it when the backend or website change. Commits carry no `Co-Authored-By` line.
+
 What the web has and the app lacks, ranked by phone fit, plus open decisions (counter sale is retired on the web; store-selection and branding differ): `docs/web-parity.md`. Request/response details for those features: `docs/backend-api.md`. Both were researched 2026-10-12; re-check the source before building.
 
 ## Commands
