@@ -36,8 +36,12 @@ class ShelvesViewModel extends ViewModel {
     load();
   }
 
+  int _requestId = 0;
+
   /// shelf:view
   Future<void> load() async {
+    // Picking another store mid-load starts another load; only the newest one may land.
+    final id = ++_requestId;
     final loc = _location;
     if (loc == null) {
       _error = 'No store is set up yet, so there are no shelves to show.';
@@ -48,10 +52,10 @@ class ShelvesViewModel extends ViewModel {
     notifyListeners();
     try {
       final tree = await _repo.shelfTree(loc.id);
-      if (disposed) return;
+      if (disposed || id != _requestId) return;
       _tree = tree;
     } on ApiException catch (e) {
-      if (disposed) return;
+      if (disposed || id != _requestId) return;
       _error = e.message;
     }
     notifyListeners();

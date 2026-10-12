@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scaleezy/core/network/api_client.dart';
+import 'package:scaleezy/features/shelves/data/shelf_models.dart';
 import 'package:scaleezy/features/shelves/presentation/view_models/shelves_view_model.dart';
 
 import 'shelves_fakes.dart';
@@ -94,5 +97,20 @@ void main() {
 
     expect(await vm.scanLabel('nope'), 'No shelf has that label.');
     expect(repo.calls, ['tree L1', 'scan R1-S1 @L1', 'scan nope @L1']);
+  });
+
+  test('a tree for the previous store that arrives late is dropped', () async {
+    final slow = Completer<ShelfTree>();
+    final repo = FakeShelfRepository(
+      tree: (id) => id == 'L1' ? slow.future : Future.value(treeOf(id, [])),
+    );
+    final vm = ShelvesViewModel(repo)
+      ..start(store('L1'), [store('L1'), store('L2')]);
+    vm.pickLocation(store('L2'));
+    await pumpEventQueue();
+    slow.complete(treeOf('L1', []));
+    await pumpEventQueue();
+
+    expect(vm.tree?.locationId, 'L2');
   });
 }

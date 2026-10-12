@@ -135,4 +135,23 @@ void main() {
     expect(vm.flowTruncated, isTrue);
     expect(vm.flowIn, HomeViewModel.movementSample);
   });
+
+  test('a slow load for the previous store is dropped', () async {
+    final slow = Completer<DashboardSummary>();
+    var call = 0;
+    final vm = HomeViewModel(
+      dashboard: FakeDashboardRepository(
+        () => ++call == 1 ? slow.future : Future.value(summary(totalUnits: 7)),
+      ),
+      inventory: FakeHomeInventoryRepository(),
+      orders: FakeOrderRepository(),
+    );
+
+    final first = vm.load(canViewInventory: false, canViewOrders: false);
+    await vm.load(canViewInventory: false, canViewOrders: false);
+    slow.complete(summary(totalUnits: 999));
+    await first;
+
+    expect(vm.data?.summary.totalUnits, 7);
+  });
 }

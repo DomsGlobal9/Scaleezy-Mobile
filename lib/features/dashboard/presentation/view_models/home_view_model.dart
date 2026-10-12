@@ -50,10 +50,14 @@ class HomeViewModel extends ViewModel {
 
   /// The summary is required; the other sections load only when allowed and are skipped
   /// (not failed) when their call fails.
+  int _requestId = 0;
+
   Future<void> load({
     required bool canViewInventory,
     required bool canViewOrders,
   }) async {
+    // A store switch mid-load starts another load; only the newest one may land.
+    final id = ++_requestId;
     _error = null;
     notifyListeners();
     Future<T?> optional<T>(bool allowed, Future<T> Function() call) => allowed
@@ -76,7 +80,7 @@ class HomeViewModel extends ViewModel {
         ),
         optional(canViewOrders, () => _orders.getOrders()),
       ]);
-      if (disposed) return;
+      if (disposed || id != _requestId) return;
       _data = HomeData(
         results[0] as DashboardSummary,
         (results[1] as List<VariantItem>?) ?? const [],
@@ -84,7 +88,7 @@ class HomeViewModel extends ViewModel {
         results[3] as List<OrderItemSummary>?,
       );
     } on ApiException catch (e) {
-      if (disposed) return;
+      if (disposed || id != _requestId) return;
       _error = e.message;
     }
     notifyListeners();
