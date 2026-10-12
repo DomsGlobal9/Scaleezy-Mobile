@@ -9,6 +9,7 @@ import 'package:scaleezy/features/customers/presentation/customers_screen.dart';
 import 'package:scaleezy/features/purchase_orders/presentation/purchase_orders_screen.dart';
 import 'package:scaleezy/features/settings/presentation/settings_screen.dart';
 import 'package:scaleezy/features/shelves/presentation/shelves_screen.dart';
+import 'package:scaleezy/features/stock_counts/presentation/stock_counts_screen.dart';
 import 'package:scaleezy/features/suppliers/presentation/suppliers_screen.dart';
 import 'package:scaleezy/features/team/presentation/team_screen.dart';
 
@@ -47,6 +48,15 @@ class MoreScreen extends StatelessWidget {
       AppColors.accentGoldLight,
       'shelf:view',
       () => const ShelvesScreen(),
+    ),
+    _Module(
+      Icons.fact_check_rounded,
+      'Stock count',
+      'Check shelves against stock',
+      AppColors.accentDanger,
+      AppColors.accentDangerLight,
+      'stock_count:view',
+      () => const StockCountsScreen(),
     ),
     _Module(
       Icons.move_to_inbox_rounded,

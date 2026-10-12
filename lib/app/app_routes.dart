@@ -7,6 +7,7 @@ import 'package:scaleezy/features/products/presentation/product_detail_screen.da
 import 'package:scaleezy/features/shelves/presentation/shelves_screen.dart';
 import 'package:scaleezy/features/customers/presentation/customers_screen.dart';
 import 'package:scaleezy/features/purchase_orders/presentation/purchase_orders_screen.dart';
+import 'package:scaleezy/features/stock_counts/presentation/stock_counts_screen.dart';
 
 /// Every push from one screen to another, typed, so a screen never builds a route itself.
 /// Switching bottom tabs stays in MainNavigationScreen.
@@ -64,4 +65,7 @@ abstract final class AppRoutes {
     BuildContext context,
     PurchaseOrderDetail po,
   ) => _push<bool>(context, ReceiveDeliveryScreen(po: po));
+
+  static Future<void> stockCount(BuildContext context, String countId) =>
+      _push<Object?>(context, StockCountScreen(countId: countId));
 }
