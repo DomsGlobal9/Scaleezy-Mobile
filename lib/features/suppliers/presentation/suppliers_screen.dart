@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/contact_utils.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
+import 'package:scaleezy/core/widgets/status_pill.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
+import 'package:scaleezy/features/customers/data/phone.dart';
 import 'package:scaleezy/features/suppliers/data/supplier_models.dart';
 import 'package:scaleezy/features/suppliers/presentation/view_models/suppliers_view_model.dart';
 
@@ -44,11 +46,9 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
 
   Widget _buildScreen() {
     final list = _vm.visible;
-    final inactive = _vm.inactive;
-    final error = _vm.error;
+    final failure = _vm.failure;
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: Column(
           children: [
@@ -57,48 +57,40 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
               subtitle: _vm.all == null ? null : '${list.length} shown',
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: SearchField(
                 controller: _query,
-                hint: 'Name, code, phone',
+                hint: 'Search suppliers by name or code...',
                 onChanged: _vm.search,
               ),
             ),
-            if (inactive > 0)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: SwitchListTile.adaptive(
-                  value: _vm.showInactive,
-                  onChanged: _vm.setShowInactive,
-                  activeTrackColor: AppColors.accentGold,
-                  dense: true,
-                  title: Text(
-                    'Show $inactive inactive',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
             Expanded(
-              child: _vm.all == null && error != null
-                  ? ErrorView(message: error, onRetry: _vm.load)
+              child: _vm.all == null && failure != null
+                  ? ErrorView.fromError(
+                      failure,
+                      what: 'suppliers',
+                      onRetry: _vm.load,
+                    )
                   : _vm.all == null
                   ? ListView(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: [
                         for (var i = 0; i < 5; i++)
                           const Padding(
                             padding: EdgeInsets.only(bottom: 10),
-                            child: Skeleton(height: 96, radius: 18),
+                            child: Skeleton(height: 96),
                           ),
                       ],
                     )
                   : list.isEmpty
-                  ? const ErrorView(message: 'No suppliers match.')
+                  ? const EmptyState(
+                      Icons.local_shipping_outlined,
+                      'No suppliers found.',
+                    )
                   : RefreshIndicator(
-                      color: AppColors.accentGold,
                       onRefresh: _vm.load,
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
                         itemCount: list.length,
                         itemBuilder: (_, i) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),
@@ -114,8 +106,10 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
   }
 
   Widget _card(Supplier s) {
-    final colour = avatarColour(s.id);
+    final colors = context.colors;
+    final type = Theme.of(context).textTheme;
     return SurfaceCard(
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -125,13 +119,13 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: colour.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  color: colors.input,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  initialsOf(s.name),
-                  style: TextStyle(color: colour, fontWeight: FontWeight.w900),
+                child: Icon(
+                  Icons.business_rounded,
+                  size: 22,
+                  color: colors.textSecondary,
                 ),
               ),
               const SizedBox(width: 12),
@@ -139,42 +133,19 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(s.name, style: type.titleSmall),
+                    const SizedBox(height: 2),
                     Text(
-                      s.name,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    Text(
-                      '${s.code} • ${s.purchaseOrders} purchase ${s.purchaseOrders == 1 ? 'order' : 'orders'}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
+                      '${s.code} · ${s.purchaseOrders} purchase ${s.purchaseOrders == 1 ? 'order' : 'orders'}',
+                      style: type.bodySmall,
                     ),
                   ],
                 ),
               ),
-              if (!s.active)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.bgSurface,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Text(
-                    'INACTIVE',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
+              const SizedBox(width: 8),
+              s.active
+                  ? StatusPill('Active', Tone.success)
+                  : StatusPill('Inactive', Tone.danger),
             ],
           ),
           if (s.address != null) ...[
@@ -182,21 +153,9 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.place_outlined,
-                  size: 14,
-                  color: AppColors.textMuted,
-                ),
+                Icon(Icons.place_outlined, size: 14, color: colors.textMuted),
                 const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    s.address!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
+                Expanded(child: Text(s.address!, style: type.bodySmall)),
               ],
             ),
           ],
@@ -209,14 +168,14 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                 if (s.phone != null) ...[
                   _chip(
                     Icons.call_rounded,
-                    s.phone!,
-                    AppColors.accentSuccess,
+                    formatPhone(s.phone),
+                    colors.success,
                     Uri(scheme: 'tel', path: s.phone),
                   ),
                   _chip(
                     Icons.chat_rounded,
                     'WhatsApp',
-                    const Color(0xFF16A34A),
+                    colors.success,
                     Uri.parse('https://wa.me/${whatsappNumber(s.phone!)}'),
                   ),
                 ],
@@ -224,7 +183,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                   _chip(
                     Icons.mail_rounded,
                     'Email',
-                    AppColors.accentBlue,
+                    colors.info,
                     Uri(scheme: 'mailto', path: s.email),
                   ),
               ],
@@ -240,8 +199,8 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        color: tint(color),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -250,11 +209,9 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
           const SizedBox(width: 6),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium!.copyWith(color: color),
           ),
         ],
       ),

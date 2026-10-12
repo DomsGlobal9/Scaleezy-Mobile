@@ -12,12 +12,15 @@ class PurchaseOrderViewModel extends ViewModel {
   final PurchaseOrderRepository _repo;
 
   PurchaseOrderDetail? _po;
-  String? _error;
+  ApiException? _failure;
   bool _changed = false;
 
   /// Null until the first load arrives.
   PurchaseOrderDetail? get po => _po;
-  String? get error => _error;
+  String? get error => _failure?.message;
+
+  /// The last failed load, kept whole so a 403 shows as no access.
+  ApiException? get failure => _failure;
 
   /// True once a delivery was received, so the list behind can refresh.
   bool get changed => _changed;
@@ -26,12 +29,12 @@ class PurchaseOrderViewModel extends ViewModel {
   int get received => _po?.lines.fold<int>(0, (a, l) => a + l.received) ?? 0;
 
   Future<void> load() async {
-    _error = null;
+    _failure = null;
     notifyListeners();
     try {
       _po = await _repo.purchaseOrder(poId);
     } on ApiException catch (e) {
-      _error = e.message;
+      _failure = e;
     }
     notifyListeners();
   }

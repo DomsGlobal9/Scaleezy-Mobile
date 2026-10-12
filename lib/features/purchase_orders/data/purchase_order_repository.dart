@@ -22,29 +22,41 @@ class PurchaseOrderRepository {
         asMap(dataOf(await _api.get(ApiEndpoints.purchaseOrder(id)))),
       );
 
-  /// purchase_order:receive. Adds the received pieces to stock. [requestKey] makes a retried
-  /// submit (a timeout on a slow line) count once instead of twice.
-  Future<void> receivePurchaseOrder(
+  /// purchase_order:receive. Adds the received pieces to stock in [locationId] (the order's own
+  /// store when null). [requestKey] makes a retried submit (a timeout on a slow line) count once
+  /// instead of twice; the answer then says `duplicate`. Answers the goods receipt's number.
+  Future<({String? receiptNumber, bool duplicate})> receivePurchaseOrder(
     String id, {
     required Map<String, int> quantities, // poItemId -> pieces
     required String receivedByName,
+    String? locationId,
     String? supplierReference,
     String? notes,
     required String requestKey,
-  }) => _api.post(
-    ApiEndpoints.receivePurchaseOrder(id),
-    body: {
-      'receipts': [
-        for (final e in quantities.entries)
-          if (e.value > 0) {'poItemId': e.key, 'quantityReceived': e.value},
-      ],
-      'receivedByName': receivedByName.trim(),
-      if (supplierReference != null && supplierReference.trim().isNotEmpty)
-        'supplierReference': supplierReference.trim(),
-      if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
-      'requestKey': requestKey,
-    },
-  );
+  }) async {
+    final body = asMap(
+      await _api.post(
+        ApiEndpoints.receivePurchaseOrder(id),
+        body: {
+          'receipts': [
+            for (final e in quantities.entries)
+              if (e.value > 0) {'poItemId': e.key, 'quantityReceived': e.value},
+          ],
+          'locationId': ?locationId,
+          'receivedByName': receivedByName.trim(),
+          if (supplierReference != null && supplierReference.trim().isNotEmpty)
+            'supplierReference': supplierReference.trim(),
+          if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+          'requestKey': requestKey,
+        },
+      ),
+    );
+    // `data` is the order; the receipt rides beside it.
+    return (
+      receiptNumber: asOptString(asMap(body['receipt'])['receiptNumber']),
+      duplicate: body['duplicate'] == true,
+    );
+  }
 
   static String newRequestKey() {
     final r = Random.secure();

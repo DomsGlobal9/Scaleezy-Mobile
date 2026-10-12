@@ -25,5 +25,26 @@ void main() {
     expect(po.summary.lineCount, 1);
     expect(po.lines.single.outstanding, 6);
     expect(po.lines.single.unitPrice, 850.5);
+    expect(po.summary.deliverToId, isNull);
+    expect(po.summary.deliverToActive, isFalse);
+  });
+
+  test('the store an order is for: name, id and whether it is on', () {
+    final po = PurchaseOrderSummary.fromJson({
+      'id': 'po1',
+      'poNumber': 'PO-7',
+      'status': 'SENT',
+      'createdAt': '2026-09-01T00:00:00Z',
+      'supplier': {'name': 'Weavers Co'},
+      'location': {
+        'id': 'loc-1',
+        'name': 'Main Store',
+        'code': 'MAIN-STORE',
+        'active': true,
+      },
+    });
+    expect(po.deliverTo, 'Main Store');
+    expect(po.deliverToId, 'loc-1');
+    expect(po.deliverToActive, isTrue);
   });
 }

@@ -9,7 +9,11 @@ class PurchaseOrderSummary {
   final DateTime? expectedDelivery;
   final DateTime createdAt;
   final int lineCount;
+
+  /// The store the order is for: its name, id, and whether it can still take stock in.
   final String? deliverTo;
+  final String? deliverToId;
+  final bool deliverToActive;
 
   const PurchaseOrderSummary({
     required this.id,
@@ -21,6 +25,8 @@ class PurchaseOrderSummary {
     required this.createdAt,
     required this.lineCount,
     this.deliverTo,
+    this.deliverToId,
+    this.deliverToActive = false,
   });
 
   bool get canReceive => status == 'SENT' || status == 'PARTIALLY_RECEIVED';
@@ -38,6 +44,8 @@ class PurchaseOrderSummary {
             ? asInt(asMap(j['_count'])['items'])
             : asMaps(j['items']).length,
         deliverTo: asOptString(asMap(j['location'])['name']),
+        deliverToId: asOptString(asMap(j['location'])['id']),
+        deliverToActive: asMap(j['location'])['active'] == true,
       );
 }
 

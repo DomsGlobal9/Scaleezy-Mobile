@@ -12,13 +12,16 @@ class CustomerDetailViewModel extends ViewModel {
   final CustomerRepository _repo;
 
   Customer? _full;
-  String? _error;
+  ApiException? _failure;
   CustomerPoints? _points;
   StoreCredit? _credit;
 
   /// Null until the first load arrives.
   Customer? get full => _full;
-  String? get error => _error;
+  String? get error => _failure?.message;
+
+  /// The last failed load, kept whole so a 403 shows as no access.
+  ApiException? get failure => _failure;
 
   /// Null when there is nothing to show: loyalty off and never used, not
   /// allowed, failed, or not arrived yet. Never holds up the customer.
@@ -26,7 +29,7 @@ class CustomerDetailViewModel extends ViewModel {
   StoreCredit? get credit => _credit?.worthShowing == true ? _credit : null;
 
   Future<void> load() async {
-    _error = null;
+    _failure = null;
     notifyListeners();
     await Future.wait([_loadCustomer(), _loadPoints(), _loadCredit()]);
   }
@@ -35,7 +38,7 @@ class CustomerDetailViewModel extends ViewModel {
     try {
       _full = await _repo.customer(customerId);
     } on ApiException catch (e) {
-      _error = e.message;
+      _failure = e;
     }
     notifyListeners();
   }

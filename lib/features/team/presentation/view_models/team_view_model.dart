@@ -10,11 +10,14 @@ class TeamViewModel extends ViewModel {
   final TeamRepository _repo;
 
   List<TeamMember>? _members;
-  String? _error;
+  ApiException? _failure;
 
   /// Null until the first load arrives.
   List<TeamMember>? get members => _members;
-  String? get error => _error;
+  String? get error => _failure?.message;
+
+  /// The last failed load, kept whole so a 403 shows as no access.
+  ApiException? get failure => _failure;
 
   /// Seen in the last 15 minutes.
   static bool isOnline(TeamMember m) =>
@@ -26,7 +29,7 @@ class TeamViewModel extends ViewModel {
 
   /// admin:users
   Future<void> load() async {
-    _error = null;
+    _failure = null;
     notifyListeners();
     try {
       _members = [...await _repo.team()]
@@ -37,7 +40,7 @@ class TeamViewModel extends ViewModel {
           );
         });
     } on ApiException catch (e) {
-      _error = e.message;
+      _failure = e;
     }
     notifyListeners();
   }

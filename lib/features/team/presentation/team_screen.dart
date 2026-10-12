@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/contact_utils.dart';
+import 'package:scaleezy/core/utils/labels.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
+import 'package:scaleezy/core/widgets/status_pill.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/team/data/team_models.dart';
 import 'package:scaleezy/features/team/presentation/view_models/team_view_model.dart';
@@ -44,13 +46,11 @@ class _TeamScreenState extends State<TeamScreen> {
   Widget _buildScreen() {
     final me = SessionScope.of(context).user?.id;
     final members = _vm.members;
-    final error = _vm.error;
+    final failure = _vm.failure;
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppColors.accentGold,
           onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 32),
@@ -61,29 +61,36 @@ class _TeamScreenState extends State<TeamScreen> {
                     ? null
                     : '${members.length} people • ${_vm.activeNow} active now',
               ),
-              if (members == null && error != null)
+              if (members == null && failure != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 80),
-                  child: ErrorView(message: error, onRetry: _vm.load),
+                  child: ErrorView.fromError(
+                    failure,
+                    what: 'the team',
+                    onRetry: _vm.load,
+                  ),
                 )
               else if (members == null)
                 for (var i = 0; i < 4; i++)
                   const Padding(
-                    padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
-                    child: Skeleton(height: 76, radius: 18),
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 10),
+                    child: Skeleton(height: 76),
                   )
               else ...[
                 for (final (i, m) in members.indexed)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                     child: _card(m, isMe: m.id == me).entrance(i % 15),
                   ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(28, 8, 28, 0),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 8, 28, 0),
                   child: Text(
                     'Adding people and changing roles is done from the web app, where the full permission list fits.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                    style: Theme.of(context).textTheme.labelMedium!.copyWith(
+                      fontWeight: FontWeight.w400,
+                      color: context.colors.textMuted,
+                    ),
                   ),
                 ),
               ],
@@ -95,120 +102,101 @@ class _TeamScreenState extends State<TeamScreen> {
   }
 
   Widget _card(TeamMember m, {required bool isMe}) {
-    final colour = avatarColour(m.id);
+    final colors = context.colors;
+    final type = Theme.of(context).textTheme;
     final online = TeamViewModel.isOnline(m);
-    final inactive = m.status != 'ACTIVE';
-    return Opacity(
-      opacity: inactive ? 0.6 : 1,
-      child: SurfaceCard(
-        padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
-        child: Row(
-          children: [
-            Stack(
+    final active = m.status == 'ACTIVE';
+    final seen = m.lastActiveAt == null
+        ? null
+        : online
+        ? 'active now'
+        : 'seen ${relativeTime(m.lastActiveAt!)}';
+    return SurfaceCard(
+      padding: const EdgeInsets.fromLTRB(14, 14, 6, 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: colour.withValues(alpha: 0.12),
-                  child: Text(
-                    initialsOf(m.name),
-                    style: TextStyle(
-                      color: colour,
-                      fontWeight: FontWeight.w900,
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text.rich(
+                        TextSpan(
+                          text: m.name,
+                          children: [
+                            if (isMe)
+                              TextSpan(
+                                text: ' (you)',
+                                style: type.bodyMedium!.copyWith(
+                                  color: colors.textMuted,
+                                ),
+                              ),
+                          ],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: type.titleSmall,
+                      ),
                     ),
+                    const SizedBox(width: 8),
+                    // The website colours a person's status green when active, red otherwise.
+                    StatusPill(
+                      describe(const {}, m.status),
+                      active ? Tone.success : Tone.danger,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  m.email,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: type.labelMedium!.copyWith(
+                    fontWeight: FontWeight.w400,
+                    color: colors.textMuted,
                   ),
                 ),
-                if (online)
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: AppColors.accentSuccess,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+                const SizedBox(height: 2),
+                Text.rich(
+                  TextSpan(
                     children: [
-                      Flexible(
-                        child: Text(
-                          m.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                      TextSpan(
+                        text: m.roles.isEmpty
+                            ? 'Team member'
+                            : m.roles.map(roleName).join(', '),
                       ),
-                      if (isMe)
-                        Container(
-                          margin: const EdgeInsets.only(left: 6),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.accentGoldLight,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'You',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.accentGold,
-                            ),
-                          ),
+                      if (seen != null) ...[
+                        const TextSpan(text: ' · '),
+                        TextSpan(
+                          text: seen,
+                          style: online
+                              ? TextStyle(color: colors.success)
+                              : null,
                         ),
+                      ],
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    [
-                      if (m.roles.isNotEmpty) m.roles.join(', '),
-                      if (inactive)
-                        m.status.toLowerCase()
-                      else if (m.lastActiveAt != null)
-                        online
-                            ? 'active now'
-                            : 'seen ${relativeTime(m.lastActiveAt!)}',
-                    ].join(' • '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                ],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: type.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          if (!isMe)
+            IconButton(
+              tooltip: 'Email',
+              onPressed: () =>
+                  launchContact(context, Uri(scheme: 'mailto', path: m.email)),
+              icon: Icon(
+                Icons.mail_outline_rounded,
+                color: colors.info,
+                size: 20,
               ),
             ),
-            if (!isMe)
-              IconButton(
-                tooltip: 'Email',
-                onPressed: () => launchContact(
-                  context,
-                  Uri(scheme: 'mailto', path: m.email),
-                ),
-                icon: const Icon(
-                  Icons.mail_outline_rounded,
-                  color: AppColors.accentBlue,
-                  size: 20,
-                ),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }

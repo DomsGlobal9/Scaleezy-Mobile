@@ -28,6 +28,7 @@ class PointsAndCreditSection extends StatelessWidget {
         const SectionHeader(title: 'Points & store credit'),
         if (p != null)
           _card(
+            context,
             icon: Icons.card_giftcard_rounded,
             title: 'Loyalty points',
             amount: _count.format(p.points),
@@ -46,6 +47,7 @@ class PointsAndCreditSection extends StatelessWidget {
         if (p != null && c != null) const SizedBox(height: 10),
         if (c != null)
           _card(
+            context,
             icon: Icons.account_balance_wallet_rounded,
             title: 'Store credit',
             amount: formatRupees(c.credit),
@@ -58,7 +60,8 @@ class PointsAndCreditSection extends StatelessWidget {
     );
   }
 
-  Widget _card({
+  Widget _card(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String amount,
@@ -67,93 +70,79 @@ class PointsAndCreditSection extends StatelessWidget {
     String? note,
     required List<BalanceEntry> entries,
     required String Function(double) change,
-  }) => SurfaceCard(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 18, color: AppColors.accentGold),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Text(
-          amount,
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.5,
-            color: negative ? AppColors.accentDanger : AppColors.textPrimary,
-          ),
-        ),
-        for (final line in lines)
-          Text(
-            line,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        if (note != null) ...[
-          const SizedBox(height: 6),
-          Text(
-            note,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.accentWarning,
-            ),
-          ),
-        ],
-        // The latest five; the full history is on the web.
-        for (final e in entries.take(5)) ...[
-          const Divider(height: 20, color: AppColors.borderLight),
+  }) {
+    final colors = context.colors;
+    final type = Theme.of(context).textTheme;
+    const tabular = [FontFeature.tabularFigures()];
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      e.reference == null
-                          ? e.label
-                          : '${e.label} · ${e.reference}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      e.note == null
-                          ? _date.format(e.at)
-                          : '${_date.format(e.at)} · ${e.note}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              Icon(icon, size: 18, color: colors.brandInk),
               const SizedBox(width: 8),
-              Text(
-                change(e.change),
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: e.change < 0
-                      ? AppColors.accentDanger
-                      : AppColors.accentSuccess,
-                ),
-              ),
+              Text(title, style: type.titleSmall),
             ],
           ),
+          const SizedBox(height: 10),
+          Text(
+            amount,
+            style: type.headlineSmall!.copyWith(
+              fontWeight: FontWeight.w600,
+              fontFeatures: tabular,
+              color: negative ? colors.danger : colors.text,
+            ),
+          ),
+          for (final line in lines) Text(line, style: type.bodySmall),
+          if (note != null) ...[
+            const SizedBox(height: 6),
+            Text(note, style: type.bodySmall!.copyWith(color: colors.warning)),
+          ],
+          // The latest five; the full history is on the web.
+          for (final e in entries.take(5)) ...[
+            const Divider(height: 20),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        e.reference == null
+                            ? e.label
+                            : '${e.label} · ${e.reference}',
+                        style: type.bodySmall!.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: colors.text,
+                        ),
+                      ),
+                      Text(
+                        e.note == null
+                            ? _date.format(e.at)
+                            : '${_date.format(e.at)} · ${e.note}',
+                        style: type.labelMedium!.copyWith(
+                          fontWeight: FontWeight.w400,
+                          color: colors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  change(e.change),
+                  style: type.titleSmall!.copyWith(
+                    fontFeatures: tabular,
+                    color: e.change < 0 ? colors.danger : colors.success,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }

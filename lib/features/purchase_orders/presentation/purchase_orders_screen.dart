@@ -4,38 +4,26 @@ import 'package:intl/intl.dart';
 
 import 'package:scaleezy/app/app_routes.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
+import 'package:scaleezy/core/shop/shop_context.dart';
+import 'package:scaleezy/core/shop/shop_models.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/core/utils/labels.dart';
 import 'package:scaleezy/core/utils/money.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/scan_sheet.dart';
+import 'package:scaleezy/core/widgets/status_pill.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/purchase_orders/data/purchase_order_models.dart';
 import 'package:scaleezy/features/purchase_orders/presentation/view_models/purchase_order_view_model.dart';
 import 'package:scaleezy/features/purchase_orders/presentation/view_models/purchase_orders_view_model.dart';
 import 'package:scaleezy/features/purchase_orders/presentation/view_models/receive_delivery_view_model.dart';
 
-(Color, Color) _statusColours(String status) => switch (status) {
-  'DRAFT' => (AppColors.accentWarning, const Color(0xFFFFFBEB)),
-  'SENT' => (AppColors.accentBlue, AppColors.accentBlueLight),
-  'PARTIALLY_RECEIVED' => (AppColors.accentPurple, AppColors.accentPurpleLight),
-  'RECEIVED' => (AppColors.accentSuccess, AppColors.accentSuccessLight),
-  'CANCELLED' => (AppColors.accentDanger, AppColors.accentDangerLight),
-  _ => (AppColors.textSecondary, AppColors.bgSurface),
-};
+const _tabular = [FontFeature.tabularFigures()];
 
-Widget _statusChip(String status) {
-  final (fg, bg) = _statusColours(status);
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-    decoration: BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(6),
-    ),
-    child: Text(
-      status.replaceAll('_', ' '),
-      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: fg),
-    ),
-  );
+/// Draft neutral, Sent info, Partly received gold, Received success, Cancelled danger.
+Widget _statusPill(String status) {
+  final look = describeStatus(purchaseOrderStatuses, status);
+  return StatusPill(look.label, look.tone);
 }
 
 /// "due in 3 days", "due today", "5 days late".
@@ -52,11 +40,15 @@ String? _due(PurchaseOrderSummary po) {
   return '${-days} ${days == -1 ? 'day' : 'days'} late';
 }
 
+/// A product line's second row: SKU, colour, size.
+String _variant(PurchaseOrderLine l) =>
+    [l.sku, ?l.color, if (l.size != null) 'Size ${l.size}'].join(' · ');
+
 class PurchaseOrdersScreen extends StatefulWidget {
   /// Tests pass their own; otherwise the screen makes and owns one.
   final PurchaseOrdersViewModel? viewModel;
 
-  /// The filter to start on, as in `?filter=open`; unknown values are ignored.
+  /// The filter to start on, as in `?filter=open`; unknown values show every status.
   final String? filter;
 
   const PurchaseOrdersScreen({super.key, this.viewModel, this.filter});
@@ -67,21 +59,21 @@ class PurchaseOrdersScreen extends StatefulWidget {
 
 class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
   final _date = DateFormat('d MMM');
+  final _query = TextEditingController();
   late final PurchaseOrdersViewModel _vm =
       widget.viewModel ?? PurchaseOrdersViewModel();
 
   @override
   void initState() {
     super.initState();
-    final filter = widget.filter?.toUpperCase();
-    if (PurchaseOrdersViewModel.filters.containsKey(filter)) {
-      _vm.selectFilter(filter!);
-    }
+    final filter = widget.filter?.toLowerCase();
+    if (filter != null) _vm.selectFilter(filter);
     _vm.load();
   }
 
   @override
   void dispose() {
+    _query.dispose();
     if (widget.viewModel == null) _vm.dispose();
     super.dispose();
   }
@@ -96,10 +88,9 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
 
   Widget _buildScreen() {
     final list = _vm.visible;
-    final error = _vm.error;
+    final failure = _vm.failure;
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: Column(
           children: [
@@ -107,45 +98,30 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
               title: 'Purchase Orders',
               subtitle: _vm.all == null
                   ? null
-                  : '${_vm.count('OPEN')} waiting to be received',
+                  : '${_vm.count('open')} waiting to be received',
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: SearchField(
+                controller: _query,
+                hint: 'Search POs by number or supplier...',
+                onChanged: _vm.search,
+              ),
             ),
             SizedBox(
-              height: 42,
+              height: 40,
               child: ListView(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 children: [
                   for (final e in PurchaseOrdersViewModel.filters.entries)
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
-                      child: Pressable(
-                        onTap: () => _vm.selectFilter(e.key),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: _vm.filter == e.key
-                                ? AppColors.textPrimary
-                                : AppColors.bgCard,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: _vm.filter == e.key
-                                  ? AppColors.textPrimary
-                                  : AppColors.borderLight,
-                            ),
-                          ),
-                          child: Text(
-                            '${e.value}  ${_vm.count(e.key)}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: _vm.filter == e.key
-                                  ? Colors.white
-                                  : AppColors.textSecondary,
-                            ),
-                          ),
-                        ),
+                      child: ChoiceChip(
+                        label: Text('${e.value}  ${_vm.count(e.key)}'),
+                        selected: _vm.filter == e.key,
+                        showCheckmark: false,
+                        onSelected: (_) => _vm.selectFilter(e.key),
                       ),
                     ),
                 ],
@@ -153,30 +129,29 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
             ),
             const SizedBox(height: 10),
             Expanded(
-              child: _vm.all == null && error != null
-                  ? ErrorView(message: error, onRetry: _vm.load)
+              child: _vm.all == null && failure != null
+                  ? ErrorView.fromError(
+                      failure,
+                      what: 'purchase orders',
+                      onRetry: _vm.load,
+                    )
                   : _vm.all == null
                   ? ListView(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: [
                         for (var i = 0; i < 5; i++)
                           const Padding(
                             padding: EdgeInsets.only(bottom: 10),
-                            child: Skeleton(height: 90, radius: 18),
+                            child: Skeleton(height: 90),
                           ),
                       ],
                     )
                   : list.isEmpty
-                  ? ErrorView(
-                      message: _vm.filter == 'OPEN'
-                          ? 'Nothing is waiting to be received.'
-                          : 'No purchase orders here.',
-                    )
+                  ? _empty()
                   : RefreshIndicator(
-                      color: AppColors.accentGold,
                       onRefresh: _vm.load,
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
                         itemCount: list.length,
                         itemBuilder: (_, i) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),
@@ -191,10 +166,36 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
     );
   }
 
+  /// The website's words: a status with nothing in it offers "Show all".
+  Widget _empty() {
+    if (_vm.filter.isEmpty || _vm.all!.isEmpty) {
+      return const EmptyState(
+        Icons.description_outlined,
+        'No purchase orders found.',
+      );
+    }
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const EmptyState(
+          Icons.description_outlined,
+          'No purchase orders with this status.',
+        ),
+        OutlinedButton(
+          onPressed: () => _vm.selectFilter(''),
+          child: const Text('Show all'),
+        ),
+      ],
+    );
+  }
+
   Widget _card(PurchaseOrderSummary po) {
+    final colors = context.colors;
+    final type = Theme.of(context).textTheme;
     final due = _due(po);
     final late = due?.contains('late') ?? false;
     return SurfaceCard(
+      padding: const EdgeInsets.all(14),
       onTap: () async {
         final changed = await AppRoutes.purchaseOrder(context, po.id);
         // Null after a swipe back, when nobody knows: reload unless it said nothing changed.
@@ -205,52 +206,55 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
         children: [
           Row(
             children: [
-              Text(
-                po.poNumber,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  fontFamily: 'monospace',
+              Flexible(
+                child: Text(
+                  po.poNumber,
+                  overflow: TextOverflow.ellipsis,
+                  style: type.titleSmall!.copyWith(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
-              _statusChip(po.status),
+              _statusPill(po.status),
               const Spacer(),
               if (po.totalAmount != null)
                 Text(
                   formatRupees(po.totalAmount!),
-                  style: const TextStyle(fontWeight: FontWeight.w900),
+                  style: type.titleSmall!.copyWith(fontFeatures: _tabular),
                 ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            po.supplierName,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-          ),
+          Text(po.supplierName, style: type.titleSmall),
           const SizedBox(height: 2),
           Row(
             children: [
               Expanded(
-                child: Text(
-                  [
-                    '${po.lineCount} ${po.lineCount == 1 ? 'line' : 'lines'}',
-                    'ordered ${_date.format(po.createdAt)}',
-                    if (po.deliverTo != null) 'to ${po.deliverTo}',
-                  ].join(' • '),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textMuted,
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text:
+                            '${po.lineCount} ${po.lineCount == 1 ? 'line' : 'lines'} · ordered ${_date.format(po.createdAt)} · ',
+                      ),
+                      po.deliverTo == null
+                          ? TextSpan(
+                              text: 'Deliver to not chosen',
+                              style: TextStyle(color: colors.warning),
+                            )
+                          : TextSpan(text: 'to ${po.deliverTo}'),
+                    ],
                   ),
+                  style: type.bodySmall,
                 ),
               ),
               if (due != null)
                 Text(
                   due,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: late ? AppColors.accentDanger : AppColors.accentBlue,
+                  style: type.labelMedium!.copyWith(
+                    color: late ? colors.danger : colors.info,
                   ),
                 ),
             ],
@@ -303,39 +307,28 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
   }
 
   Widget _buildScreen() {
+    final colors = context.colors;
+    final type = Theme.of(context).textTheme;
     final po = _vm.po;
-    final error = _vm.error;
+    final failure = _vm.failure;
     final ordered = _vm.ordered;
     final received = _vm.received;
     final canReceive =
         po != null &&
         po.summary.canReceive &&
         SessionScope.of(context).can('purchase_order:receive');
+    final due = po == null ? null : _due(po.summary);
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       bottomNavigationBar: canReceive
           ? SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                 child:
                     FilledButton.icon(
                       onPressed: _receive,
                       icon: const Icon(Icons.move_to_inbox_rounded),
-                      label: const Text(
-                        'Receive Now',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                        ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.accentGold,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
+                      label: const Text('Receive Now'),
                     ).animate().slideY(
                       begin: 1,
                       end: 0,
@@ -347,7 +340,6 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
           : null,
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppColors.accentGold,
           onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 24),
@@ -358,34 +350,38 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                 // Says whether anything changed; a swipe back pops null.
                 onBack: () => Navigator.of(context).pop(_vm.changed),
               ),
-              if (po == null && error != null)
+              if (po == null && failure != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 80),
-                  child: ErrorView(message: error, onRetry: _vm.load),
+                  child: ErrorView.fromError(
+                    failure,
+                    what: 'this purchase order',
+                    onRetry: _vm.load,
+                  ),
                 )
               else if (po == null)
                 const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Skeleton(height: 260, radius: 22),
+                  padding: EdgeInsets.all(16),
+                  child: Skeleton(height: 260, radius: 16),
                 )
               else ...[
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: SurfaceCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            _statusChip(po.summary.status),
+                            _statusPill(po.summary.status),
                             const Spacer(),
-                            if (_due(po.summary) != null)
+                            if (due != null)
                               Text(
-                                _due(po.summary)!,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.accentBlue,
+                                due,
+                                style: type.labelMedium!.copyWith(
+                                  color: due.contains('late')
+                                      ? colors.danger
+                                      : colors.info,
                                 ),
                               ),
                           ],
@@ -396,19 +392,15 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                           children: [
                             Text(
                               '$received',
-                              style: const TextStyle(
-                                fontSize: 30,
-                                fontWeight: FontWeight.w900,
+                              style: type.headlineSmall!.copyWith(
+                                fontWeight: FontWeight.w600,
+                                fontFeatures: _tabular,
                                 height: 1,
                               ),
                             ),
                             Text(
                               ' / $ordered pieces received',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: type.bodySmall,
                             ),
                           ],
                         ),
@@ -425,8 +417,8 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                             builder: (_, v, _) => LinearProgressIndicator(
                               value: v,
                               minHeight: 10,
-                              backgroundColor: AppColors.bgSurface,
-                              color: AppColors.accentSuccess,
+                              backgroundColor: colors.input,
+                              color: colors.success,
                             ),
                           ),
                         ),
@@ -434,29 +426,20 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                           const SizedBox(height: 12),
                           Text(
                             'Order value ${formatRupees(po.summary.totalAmount!)}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: type.bodySmall,
                           ),
                         ],
                         if (po.summary.deliverTo != null)
                           Text(
                             'Deliver to ${po.summary.deliverTo}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: type.bodySmall,
                           ),
                         if (po.notes != null) ...[
                           const SizedBox(height: 8),
                           Text(
                             po.notes!,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textMuted,
+                            style: type.bodySmall!.copyWith(
+                              color: colors.textMuted,
                             ),
                           ),
                         ],
@@ -466,12 +449,12 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                 ),
                 const SizedBox(height: 20),
                 const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(horizontal: 16),
                   child: SectionHeader(title: 'Lines'),
                 ),
                 for (final (i, l) in po.lines.indexed)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                     child: SurfaceCard(
                       padding: const EdgeInsets.all(14),
                       child: Column(
@@ -483,33 +466,18 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      l.title,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    Text(
-                                      [
-                                        l.sku,
-                                        ?l.color,
-                                        if (l.size != null) 'Size ${l.size}',
-                                      ].join(' • '),
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textMuted,
-                                      ),
-                                    ),
+                                    Text(l.title, style: type.titleSmall),
+                                    Text(_variant(l), style: type.bodySmall),
                                   ],
                                 ),
                               ),
                               Text(
                                 '${l.received}/${l.ordered}',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w900,
+                                style: type.titleSmall!.copyWith(
+                                  fontFeatures: _tabular,
                                   color: l.outstanding == 0
-                                      ? AppColors.accentSuccess
-                                      : AppColors.textPrimary,
+                                      ? colors.success
+                                      : colors.text,
                                 ),
                               ),
                             ],
@@ -522,18 +490,15 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                                   ? 0
                                   : l.received / l.ordered,
                               minHeight: 5,
-                              backgroundColor: AppColors.bgSurface,
-                              color: AppColors.accentSuccess,
+                              backgroundColor: colors.input,
+                              color: colors.success,
                             ),
                           ),
                           if (l.unitPrice != null) ...[
                             const SizedBox(height: 6),
                             Text(
                               '${formatRupees(l.unitPrice!)} each',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textMuted,
-                              ),
+                              style: type.bodySmall,
                             ),
                           ],
                         ],
@@ -577,6 +542,12 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
     super.dispose();
   }
 
+  /// The app's store, where the goods go; null before the store list loads.
+  StockLocation? get _store => context
+      .getInheritedWidgetOfExactType<ShopScope>()
+      ?.notifier
+      ?.selectedLocation;
+
   /// Each scan of a piece's tag counts one against its line.
   Future<void> _scanPieces() async {
     await showScanSheet(
@@ -589,28 +560,39 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
 
   Future<void> _submit() async {
     if (_vm.validate(_receivedBy.text) != null) return;
+    final po = widget.po.summary;
+    final store = _store;
     final lines = _vm.countedLines;
+    // Not blocked (a warehouse may take a branch's delivery to send on), but asked, as the
+    // website does: the usual reason is the wrong store, and nothing downstream notices.
+    final other = _vm.intoOtherStore(store?.id);
+    final into = store?.name ?? po.deliverTo;
     final ok = await confirmAction(
       context,
-      title: 'Add ${_vm.total} pieces to stock?',
-      message:
-          '$lines ${lines == 1 ? 'line' : 'lines'} of ${widget.po.summary.poNumber} from ${widget.po.summary.supplierName}'
-          '${widget.po.summary.deliverTo != null ? ' into ${widget.po.summary.deliverTo}' : ''}. '
-          'This updates stock straight away.',
-      confirmLabel: 'Receive Now',
+      title: other
+          ? 'Receive into a different store?'
+          : 'Add ${_vm.total} pieces to stock?',
+      message: other
+          ? 'This order is for ${po.deliverTo}. Receive these goods into $into instead?\n\n'
+                'The stock will go into $into. ${po.deliverTo} stays short, and its low-stock alerts stay open, until stock is moved there with a Transfer.'
+          : '$lines ${lines == 1 ? 'line' : 'lines'} of ${po.poNumber} from ${po.supplierName}'
+                '${into != null ? ' into $into' : ''}. '
+                'This updates stock straight away.',
+      confirmLabel: other ? 'Receive into $into' : 'Receive Now',
     );
     if (!ok || !mounted) return;
 
     final error = await _vm.receive(
       receivedBy: _receivedBy.text,
       reference: _reference.text,
+      locationId: store?.id,
     );
     if (!mounted) return;
     if (error != null) {
       showMessage(context, error, error: true);
       return;
     }
-    showMessage(context, 'Received ${_vm.total} pieces.', success: true);
+    showMessage(context, _vm.done!, success: true);
     Navigator.of(context).pop(true);
   }
 
@@ -641,14 +623,15 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
   }
 
   Widget _buildScreen() {
+    final colors = context.colors;
+    final type = Theme.of(context).textTheme;
     final outstanding = _vm.outstanding;
     final total = _vm.total;
     final error = _vm.error;
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -658,40 +641,23 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
                   child: Text(
                     error,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppColors.accentDanger,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: type.bodySmall!.copyWith(color: colors.danger),
                   ),
                 ),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: _vm.busy ? null : _submit,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.accentGold,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
                   child: _vm.busy
                       ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
-                          ),
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Text(
                           total == 0
                               ? 'Count the pieces'
                               : 'Receive $total pieces',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                          ),
                         ),
                 ),
               ),
@@ -706,30 +672,17 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
             PageHeader(
               title: 'Receive Now',
               subtitle:
-                  '${widget.po.summary.poNumber} • $outstanding pieces outstanding',
+                  '${widget.po.summary.poNumber} · $outstanding pieces outstanding',
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: _scanPieces,
                       icon: const Icon(Icons.qr_code_scanner_rounded),
-                      label: const Text(
-                        'Scan pieces',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.accentGold,
-                        side: const BorderSide(
-                          color: AppColors.accentGoldBorder,
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
+                      label: const Text('Scan pieces'),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -737,18 +690,7 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
                     child: OutlinedButton.icon(
                       onPressed: _vm.allArrived,
                       icon: const Icon(Icons.done_all_rounded),
-                      label: const Text(
-                        'All arrived',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.textPrimary,
-                        side: const BorderSide(color: AppColors.borderLight),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
+                      label: const Text('All arrived'),
                     ),
                   ),
                 ],
@@ -757,19 +699,19 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
             const SizedBox(height: 14),
             for (final (i, l) in _vm.lines.indexed)
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
+                  duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: _vm.qty(l.id) == l.outstanding
-                        ? AppColors.accentSuccessLight
-                        : AppColors.bgCard,
-                    borderRadius: BorderRadius.circular(18),
+                        ? tint(colors.success)
+                        : colors.card,
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: _vm.qty(l.id) == l.outstanding
-                          ? AppColors.accentSuccess.withValues(alpha: 0.3)
-                          : AppColors.borderLight,
+                          ? tint(colors.success, 0.3)
+                          : colors.border,
                     ),
                   ),
                   child: Row(
@@ -778,29 +720,12 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              l.title,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            Text(
-                              [
-                                l.sku,
-                                ?l.color,
-                                if (l.size != null) 'Size ${l.size}',
-                              ].join(' • '),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textMuted,
-                              ),
-                            ),
+                            Text(l.title, style: type.titleSmall),
+                            Text(_variant(l), style: type.bodySmall),
                             Text(
                               '${l.outstanding} still to come',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.accentBlue,
+                              style: type.labelMedium!.copyWith(
+                                color: colors.info,
                               ),
                             ),
                           ],
@@ -817,35 +742,25 @@ class _ReceiveDeliveryScreenState extends State<ReceiveDeliveryScreen> {
               ),
             const SizedBox(height: 12),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
                   TextField(
                     controller: _receivedBy,
                     textCapitalization: TextCapitalization.words,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       labelText: 'Received by',
                       hintText: 'Name of the person who took the goods',
-                      prefixIcon: const Icon(Icons.person_outline_rounded),
-                      filled: true,
-                      fillColor: AppColors.bgCard,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
+                      prefixIcon: Icon(Icons.person_outline_rounded),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _reference,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       labelText: 'Supplier invoice / challan no. (optional)',
                       hintText: 'e.g. INV-2291',
-                      prefixIcon: const Icon(Icons.receipt_long_outlined),
-                      filled: true,
-                      fillColor: AppColors.bgCard,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
+                      prefixIcon: Icon(Icons.receipt_long_outlined),
                     ),
                   ),
                 ],

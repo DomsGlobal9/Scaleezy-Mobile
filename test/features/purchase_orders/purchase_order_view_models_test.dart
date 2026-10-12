@@ -15,31 +15,46 @@ void main() {
       summary('d', status: 'RECEIVED'),
     ];
 
-    test('loads and filters, starting with what is to receive', () async {
+    test('loads every status, filters as the website, and searches', () async {
       final vm = PurchaseOrdersViewModel(
         FakePurchaseOrderRepository(list: () async => orders),
       );
       expect(vm.all, isNull);
       await vm.load();
 
-      expect(vm.filter, 'OPEN');
-      expect(vm.visible.map((p) => p.id), ['a', 'b']);
-      expect(vm.count('OPEN'), 2);
-      expect(vm.count('ALL'), 4);
-      expect(vm.count('CANCELLED'), 0);
+      expect(vm.filter, '');
+      expect(vm.visible.map((p) => p.id), ['a', 'b', 'c', 'd']);
+      expect(vm.count('open'), 2);
+      expect(vm.count(''), 4);
+      expect(vm.count('cancelled'), 0);
 
-      vm.selectFilter('DRAFT');
+      vm.selectFilter('draft');
       expect(vm.visible.map((p) => p.id), ['c']);
+      vm.selectFilter('partly_received');
+      expect(vm.visible.map((p) => p.id), ['b']);
+      vm.selectFilter('sent');
+      expect(vm.visible.map((p) => p.id), ['a']);
+      vm.selectFilter('nonsense'); // an old link: every status
+      expect(vm.filter, '');
+
+      vm.search('po-d');
+      expect(vm.visible.map((p) => p.id), ['d']);
+      vm.search('WEAVERS');
+      expect(vm.visible, hasLength(4));
+      vm.search('loom');
+      expect(vm.visible, isEmpty);
     });
 
     test('a failed load shows the server message', () async {
       final vm = PurchaseOrdersViewModel(
         FakePurchaseOrderRepository(
-          list: () async => throw const ApiException('No access.'),
+          list: () async =>
+              throw const ApiException('No access.', statusCode: 403),
         ),
       );
       await vm.load();
       expect(vm.error, 'No access.');
+      expect(vm.failure!.isForbidden, isTrue);
       expect(vm.all, isNull);
     });
   });
@@ -121,6 +136,7 @@ void main() {
       final repo = FakePurchaseOrderRepository(
         receive: () async {
           if (fail) throw const ApiException('Timed out.');
+          return (receiptNumber: 'GRN-0004', duplicate: false);
         },
       );
       final vm = ReceiveDeliveryViewModel(detail(), repo);
@@ -133,14 +149,24 @@ void main() {
       expect(vm.busy, isFalse);
 
       fail = false;
-      expect(await vm.receive(receivedBy: 'Asha', reference: 'INV-1'), isNull);
+      expect(
+        await vm.receive(
+          receivedBy: 'Asha',
+          reference: 'INV-1',
+          locationId: 'store-2',
+        ),
+        isNull,
+      );
       expect(vm.busy, isTrue); // the screen closes
+      expect(vm.done, 'Received — GRN-0004');
+      expect(repo.receipts.last['locationId'], 'store-2');
 
       expect(repo.receipts, hasLength(2));
       expect(repo.receipts.first, {
         'id': 'po1',
         'quantities': {'i1': 2, 'i2': 0},
         'receivedByName': 'Asha',
+        'locationId': null,
         'supplierReference': 'INV-1',
         'requestKey': vm.requestKey,
       });
@@ -148,6 +174,52 @@ void main() {
         repo.receipts.last['requestKey'],
         repo.receipts.first['requestKey'],
       );
+    });
+
+    test('a retried receive the server already had says so', () async {
+      final vm = ReceiveDeliveryViewModel(
+        detail(),
+        FakePurchaseOrderRepository(
+          receive: () async => (receiptNumber: 'GRN-0004', duplicate: true),
+        ),
+      );
+      vm.setQty('i1', 1);
+      await vm.receive(receivedBy: 'Asha', reference: '');
+      expect(vm.done, 'Already received — GRN-0004');
+    });
+
+    test('without a receipt number it still says it worked', () async {
+      final vm = ReceiveDeliveryViewModel(
+        detail(),
+        FakePurchaseOrderRepository(
+          receive: () async => (receiptNumber: null, duplicate: false),
+        ),
+      );
+      vm.setQty('i1', 1);
+      await vm.receive(receivedBy: 'Asha', reference: '');
+      expect(vm.done, 'Goods received successfully');
+    });
+
+    test('asks only when the app store is not the order\'s active store', () {
+      ReceiveDeliveryViewModel vmFor(Map<String, Object?>? location) =>
+          ReceiveDeliveryViewModel(
+            detail(location: location),
+            FakePurchaseOrderRepository(),
+          );
+      final forMain = vmFor({'id': 'main', 'name': 'Main', 'active': true});
+      expect(forMain.intoOtherStore('main'), isFalse);
+      expect(forMain.intoOtherStore('branch'), isTrue);
+      expect(forMain.intoOtherStore(null), isFalse); // store not known yet
+      // The order's store is switched off, or none was chosen: nothing to ask.
+      expect(
+        vmFor({
+          'id': 'main',
+          'name': 'Main',
+          'active': false,
+        }).intoOtherStore('branch'),
+        isFalse,
+      );
+      expect(vmFor(null).intoOtherStore('branch'), isFalse);
     });
   });
 }

@@ -39,7 +39,9 @@ void main() {
       vm.search('asha');
       expect(vm.query, 'asha');
       expect(repo.searches, isEmpty);
-      await Future<void>.delayed(const Duration(milliseconds: 450));
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(repo.searches, isEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
 
       expect(repo.searches, ['asha']);
       vm.dispose();
@@ -168,17 +170,76 @@ void main() {
       );
       final vm = CustomerFormViewModel(null, repo);
 
-      final error = await vm.save(name: 'Ravi', phone: '9876543210', email: '');
+      final error = await vm.save(name: 'Ravi', phone: '9848022338', email: '');
 
       expect(error, isNull);
       expect(vm.saved!.id, 'n1');
       expect(vm.busy, isTrue); // the form closes
+      // Sent in its stored form, as the website's normalisePhone.
       expect(repo.saves.single, {
         'op': 'create',
         'name': 'Ravi',
-        'phone': '9876543210',
+        'phone': '+919848022338',
         'email': '',
       });
+    });
+
+    test('a phone or email that does not look right is not sent', () async {
+      final repo = FakeCustomerRepository(
+        saveAnswer: () async => customer('n1'),
+      );
+      final vm = CustomerFormViewModel(null, repo);
+
+      expect(
+        await vm.save(name: 'Ravi', phone: '12345', email: ''),
+        'Enter a 10-digit mobile number, or + and the country code for a number from another country.',
+      );
+      expect(
+        await vm.save(name: 'Ravi', phone: '98480 22338', email: 'ravi@shop'),
+        "That email address doesn't look right. Check it, or leave the box empty.",
+      );
+      expect(repo.saves, isEmpty);
+      expect(vm.busy, isFalse);
+    });
+
+    test(
+      'a customer saved without a phone can be edited without one',
+      () async {
+        final repo = FakeCustomerRepository(
+          saveAnswer: () async => customer('c1'),
+        );
+        final vm = CustomerFormViewModel(customer('c1'), repo);
+        expect(vm.phoneOptional, isTrue);
+
+        expect(await vm.save(name: 'Asha', phone: ' ', email: ''), isNull);
+        expect(repo.saves.single['phone'], isNull);
+      },
+    );
+
+    test('a number someone already has offers to open them', () async {
+      final asked = <String>[];
+      final repo = FakeCustomerRepository(
+        saveAnswer: () async => throw const ApiException(
+          'Priya Sharma (CUS-000041) is already saved with that number.',
+          statusCode: 409,
+        ),
+        byPhone: (phone) async {
+          asked.add(phone);
+          return customer('p1', name: 'Priya Sharma');
+        },
+      );
+      final vm = CustomerFormViewModel(null, repo);
+
+      final error = await vm.save(
+        name: 'Ravi',
+        phone: '+91 98480 22338',
+        email: '',
+      );
+
+      expect(error, contains('already saved with that number'));
+      expect(asked, ['+919848022338']);
+      expect(vm.taken!.name, 'Priya Sharma');
+      expect(vm.busy, isFalse);
     });
 
     test('an existing customer is updated', () async {
@@ -188,11 +249,12 @@ void main() {
       final vm = CustomerFormViewModel(customer('c1'), repo);
 
       expect(
-        await vm.save(name: 'Asha R', phone: '9876543210', email: 'a@b.in'),
+        await vm.save(name: 'Asha R', phone: '9848022338', email: 'a@b.in'),
         isNull,
       );
       expect(repo.saves.single['op'], 'update');
       expect(repo.saves.single['id'], 'c1');
+      expect(repo.saves.single['phone'], '+919848022338');
       expect(vm.saved!.name, 'Asha R');
     });
 
@@ -207,7 +269,7 @@ void main() {
 
         final error = await vm.save(
           name: 'Ravi',
-          phone: '9876543210',
+          phone: '9848022338',
           email: '',
         );
 
@@ -215,6 +277,7 @@ void main() {
         expect(vm.error, error);
         expect(vm.busy, isFalse);
         expect(vm.saved, isNull);
+        expect(vm.taken, isNull); // not a 409: nobody to offer
       },
     );
   });

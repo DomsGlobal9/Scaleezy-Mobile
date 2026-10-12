@@ -72,23 +72,42 @@ class ReceiveDeliveryViewModel extends ViewModel {
     return problem;
   }
 
-  /// purchase_order:receive. Null on success, otherwise the server's message. Stays busy after
-  /// success because the screen closes.
+  /// Whether the goods would go into [storeId] (the app's store) rather than the active store
+  /// the order is for: worth asking first, as the website does, since nothing downstream notices.
+  bool intoOtherStore(String? storeId) =>
+      storeId != null &&
+      po.summary.deliverToActive &&
+      po.summary.deliverToId != null &&
+      po.summary.deliverToId != storeId;
+
+  String? _done;
+
+  /// What to say once received: "Received — GRN-0001", as the website.
+  String? get done => _done;
+
+  /// purchase_order:receive, into [locationId] (the order's own store when null). Null on
+  /// success, otherwise the server's message. Stays busy after success because the screen
+  /// closes.
   Future<String?> receive({
     required String receivedBy,
     required String reference,
+    String? locationId,
   }) async {
     _busy = true;
     _error = null;
     notifyListeners();
     try {
-      await _repo.receivePurchaseOrder(
+      final r = await _repo.receivePurchaseOrder(
         po.summary.id,
         quantities: _qty,
         receivedByName: receivedBy,
+        locationId: locationId,
         supplierReference: reference,
         requestKey: requestKey,
       );
+      _done = r.receiptNumber == null
+          ? 'Goods received successfully'
+          : '${r.duplicate ? 'Already received' : 'Received'} — ${r.receiptNumber}';
       return null;
     } on ApiException catch (e) {
       _busy = false;
