@@ -9,7 +9,8 @@ class StockMovementViewModel extends ViewModel {
     required this.isStockIn,
     InventoryRepository? inventory,
   }) : _inventory = inventory ?? InventoryRepository(),
-       _reason = (isStockIn ? stockInReasons : stockOutReasons).first;
+       // Stock out starts with no reason, as the web: a default wrote damage off as a sample.
+       _reason = isStockIn ? stockInReasons.first : null;
 
   final String variantId;
   final bool isStockIn;
@@ -27,20 +28,39 @@ class StockMovementViewModel extends ViewModel {
   // The only reasons the server takes for stock off by hand; sales remove stock themselves.
   static const stockOutReasons = ['DAMAGE', 'SAMPLE', 'RETURN_TO_VENDOR'];
 
+  /// What each reason reads as on screen.
+  static const reasonLabels = {
+    'PURCHASE': 'Purchase',
+    'RETURN': 'Return',
+    'INITIAL_STOCK': 'Initial stock',
+    'SUPPLIER_DELIVERY': 'Supplier delivery',
+    'PURCHASE_RECEIPT': 'Purchase receipt',
+    'DAMAGE': 'Damaged',
+    'SAMPLE': 'Sample',
+    'RETURN_TO_VENDOR': 'Returned to the supplier',
+  };
+
+  static const noReasonMessage =
+      'Choose why these pieces are going out: damaged, a sample, or returned to the supplier.';
+  static const paisaMessage =
+      'Prices go to the paisa: use at most 2 digits after the point, for example 1499.50.';
+
   /// The typed text, as the fields hold it.
   String quantity = '1';
   String cost = '';
 
-  String _reason;
+  String? _reason;
   bool _busy = false;
   String? _error;
 
   List<String> get reasons => isStockIn ? stockInReasons : stockOutReasons;
-  String get reason => _reason;
+
+  /// Null until the person picks one (stock out only).
+  String? get reason => _reason;
   bool get busy => _busy;
   String? get error => _error;
 
-  set reason(String value) {
+  set reason(String? value) {
     _reason = value;
     notifyListeners();
   }
@@ -64,6 +84,13 @@ class StockMovementViewModel extends ViewModel {
     if (costText.isNotEmpty && unitCost == null) {
       return _fail('What you paid is not a number.');
     }
+    // The server's rule (web utils/money.js hasPartPaise): 1499.999 would be rounded away.
+    if (unitCost != null &&
+        ((unitCost * 100) - (unitCost * 100).round()).abs() >= 1e-6) {
+      return _fail(paisaMessage);
+    }
+    final reason = _reason;
+    if (reason == null) return _fail(noReasonMessage);
 
     _busy = true;
     _error = null;
@@ -73,14 +100,14 @@ class StockMovementViewModel extends ViewModel {
         await _inventory.stockIn(
           variantId: variantId,
           quantity: qty,
-          reason: _reason,
+          reason: reason,
           unitCost: unitCost,
         );
       } else {
         await _inventory.stockOut(
           variantId: variantId,
           quantity: qty,
-          reason: _reason,
+          reason: reason,
         );
       }
       // Stays busy: the dialog closes now.

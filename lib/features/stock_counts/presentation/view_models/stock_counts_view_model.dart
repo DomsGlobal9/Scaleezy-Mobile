@@ -1,5 +1,4 @@
 import 'package:scaleezy/core/network/api_client.dart';
-import 'package:scaleezy/core/shop/shop_models.dart';
 import 'package:scaleezy/core/view_model/view_model.dart';
 import 'package:scaleezy/features/stock_counts/data/stock_count_models.dart';
 import 'package:scaleezy/features/stock_counts/data/stock_count_repository.dart';
@@ -20,24 +19,17 @@ class StockCountsViewModel extends ViewModel {
     'UNISEX': 'Unisex',
   };
 
-  /// The selected store, else the first store that is not the online shop, else any.
-  static StockLocation? defaultStore(
-    StockLocation? selected,
-    List<StockLocation> locations,
-  ) =>
-      selected ??
-      locations.where((l) => l.type != 'ONLINE').firstOrNull ??
-      locations.firstOrNull;
-
   List<StockCount>? _counts;
-  String? _error;
+  ApiException? _error;
   bool _creating = false;
   String? _createError;
   StockCount? _created;
 
   /// Null until the first load arrives. Newest first, as the server sends them.
   List<StockCount>? get counts => _counts;
-  String? get error => _error;
+
+  /// Why the last load failed; a 403 shows as no access.
+  ApiException? get error => _error;
   bool get creating => _creating;
 
   /// The server's message from the last failed [create].
@@ -55,7 +47,7 @@ class StockCountsViewModel extends ViewModel {
     try {
       _counts = await _repo.stockCounts();
     } on ApiException catch (e) {
-      _error = e.message;
+      _error = e;
     }
     notifyListeners();
   }

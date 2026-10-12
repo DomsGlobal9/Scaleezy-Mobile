@@ -32,7 +32,7 @@ void main() {
         ),
       );
       await vm.load();
-      expect(vm.error, 'No access.');
+      expect(vm.error?.message, 'No access.');
       expect(vm.counts, isNull);
     });
 
@@ -65,15 +65,6 @@ void main() {
       expect(vm.createError, message);
       expect(vm.created, isNull);
       expect(vm.creating, isFalse);
-    });
-
-    test('the default store follows the shelves rule', () {
-      final online = store('ON', type: 'ONLINE');
-      final shop = store('S1');
-      expect(StockCountsViewModel.defaultStore(online, [online, shop]), online);
-      expect(StockCountsViewModel.defaultStore(null, [online, shop]), shop);
-      expect(StockCountsViewModel.defaultStore(null, [online]), online);
-      expect(StockCountsViewModel.defaultStore(null, const []), isNull);
     });
   });
 
@@ -117,7 +108,7 @@ void main() {
         ),
       );
       await vm.load();
-      expect(vm.error, 'Stock count not found');
+      expect(vm.error?.message, 'Stock count not found');
       expect(vm.count, isNull);
       expect(vm.visible, isEmpty);
     });
