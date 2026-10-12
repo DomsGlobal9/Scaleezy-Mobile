@@ -12,6 +12,7 @@ import 'package:scaleezy/features/customers/data/customer_models.dart';
 import 'package:scaleezy/features/customers/presentation/view_models/customer_detail_view_model.dart';
 import 'package:scaleezy/features/customers/presentation/view_models/customer_form_view_model.dart';
 import 'package:scaleezy/features/customers/presentation/view_models/customers_view_model.dart';
+import 'package:scaleezy/features/customers/presentation/widgets/points_and_credit_section.dart';
 
 class CustomersScreen extends StatefulWidget {
   /// Tests pass their own; otherwise the screen makes and owns one.
@@ -468,6 +469,14 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                     ),
                   ),
                 ],
+                if (_vm.points != null || _vm.credit != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
+                    child: PointsAndCreditSection(
+                      points: _vm.points,
+                      credit: _vm.credit,
+                    ).entrance(3),
+                  ),
                 if (orders.isNotEmpty) ...[
                   const SizedBox(height: 22),
                   const Padding(
