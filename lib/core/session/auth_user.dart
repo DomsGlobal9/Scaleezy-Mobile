@@ -18,11 +18,14 @@ class AuthUser {
   });
 
   /// The server has already expanded implied permissions; the owner holds `*`.
-  bool can(String permission) =>
-      permissions.contains('*') || permissions.contains(permission);
+  bool can(String permission) => isOwner || permissions.contains(permission);
 
   /// The account owner -- the only one who may change the shop's name and details.
-  bool get isOwner => permissions.contains('*');
+  /// Same rule as the backend's holdsEverything: `*`, or the legacy SUPER_ADMIN role name.
+  /// shortcut: the role-name half is transitional; drop it when the backend drops
+  /// LEGACY_OWNER_ROLE_NAMES (after migration 20260909210000_split_money_permissions everywhere).
+  bool get isOwner =>
+      permissions.contains('*') || roles.contains('SUPER_ADMIN');
 
   /// [clientId] is passed separately for /auth/session, which carries it as `client.id`.
   factory AuthUser.fromJson(Map<String, dynamic> j, {String? clientId}) =>

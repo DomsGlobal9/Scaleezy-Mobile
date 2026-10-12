@@ -20,4 +20,15 @@ void main() {
     expect(clerk.can('sales_order:create'), isFalse);
     expect(clerk.clientId, 'sphl');
   });
+
+  test('a legacy SUPER_ADMIN role is the owner, as on the backend', () {
+    final legacy = AuthUser.fromJson({
+      'id': 'u',
+      'email': 'a@b.c',
+      'roles': ['SUPER_ADMIN'],
+      'permissions': ['dashboard:view'],
+    });
+    expect(legacy.isOwner, isTrue);
+    expect(legacy.can('cost:view'), isTrue);
+  });
 }
