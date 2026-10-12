@@ -20,7 +20,7 @@ extension EntranceAnimate on Widget {
           );
 }
 
-/// A grey block that shimmers while real content loads -- the shape of what is coming.
+/// A pale block that pulses while real content loads -- the shape of what is coming.
 class Skeleton extends StatelessWidget {
   final double? width;
   final double height;
@@ -39,12 +39,12 @@ class Skeleton extends StatelessWidget {
           width: width,
           height: height,
           decoration: BoxDecoration(
-            color: AppColors.bgSurface,
+            color: context.colors.hover,
             borderRadius: BorderRadius.circular(radius),
           ),
         )
-        .animate(onPlay: (c) => c.repeat())
-        .shimmer(duration: 1400.ms, color: Colors.white.withValues(alpha: 0.7));
+        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .fade(begin: 1, end: 0.5, duration: 750.ms, curve: Curves.easeInOut);
   }
 }
 
@@ -100,18 +100,10 @@ class NetImage extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFFBEB), Color(0xFFF1F5F9)],
-        ),
+        color: context.colors.input,
         borderRadius: BorderRadius.circular(radius),
       ),
-      child: Icon(
-        fallbackIcon,
-        color: AppColors.accentGold.withValues(alpha: 0.55),
-        size: 26,
-      ),
+      child: Icon(fallbackIcon, color: context.colors.textMuted, size: 26),
     );
     if (url == null) return fallback;
     return ClipRRect(
@@ -194,24 +186,16 @@ class SectionHeader extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-              ),
-            ),
+            child: Text(title, style: Theme.of(context).textTheme.titleMedium),
           ),
           if (trailing != null)
             GestureDetector(
               onTap: onTrailing,
               child: Text(
                 trailing!,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.accentGold,
+                style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: context.colors.brandInk,
                 ),
               ),
             ),
@@ -359,7 +343,7 @@ String reasonLabel(String reason) {
   ].join(' ');
 }
 
-/// Large title for a pushed module page, with a back button and optional actions.
+/// Page title (24/700) for a module page, with a back arrow when the page can pop.
 class PageHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -390,24 +374,15 @@ class PageHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.6,
-                  ),
-                ),
+                Text(title, style: Theme.of(context).textTheme.headlineSmall),
                 if (subtitle != null)
                   AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 250),
+                    duration: const Duration(milliseconds: 200),
                     child: Text(
                       subtitle!,
                       key: ValueKey(subtitle),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
+                      style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                        color: context.colors.textSecondary,
                       ),
                     ),
                   ),
@@ -441,39 +416,21 @@ class SearchField extends StatelessWidget {
       controller: controller,
       onChanged: onChanged,
       textInputAction: TextInputAction.search,
+      // Fill, radius 6, borders and hint colour come from the theme's input decoration.
       decoration: InputDecoration(
-        filled: true,
-        fillColor: AppColors.bgCard,
         hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 13),
-        prefixIcon: const Icon(
-          Icons.search_rounded,
-          color: AppColors.textSecondary,
-          size: 20,
-        ),
+        prefixIcon: const Icon(Icons.search_rounded, size: 20),
         suffixIcon: controller.text.isEmpty
             ? null
             : IconButton(
-                icon: const Icon(
-                  Icons.close_rounded,
-                  size: 18,
-                  color: AppColors.textSecondary,
-                ),
+                icon: const Icon(Icons.close_rounded, size: 18),
+                color: context.colors.textSecondary,
                 onPressed: () {
                   controller.clear();
                   onChanged('');
                   onClear?.call();
                 },
               ),
-        contentPadding: const EdgeInsets.symmetric(vertical: 14),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.borderLight),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.accentGold, width: 1.5),
-        ),
       ),
     );
   }
@@ -496,19 +453,20 @@ class QuantityStepper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     Widget btn(IconData icon, int next, bool enabled) => Pressable(
       onTap: enabled ? () => onChanged(next) : null,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: enabled ? AppColors.bgSurface : AppColors.bgLight,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: enabled ? AppColors.textPrimary : AppColors.textMuted,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.5,
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: c.input,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: c.border),
+          ),
+          child: Icon(icon, size: 18, color: c.text),
         ),
       ),
     );
@@ -525,7 +483,9 @@ class QuantityStepper extends StatelessWidget {
               '$value',
               key: ValueKey(value),
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ),
         ),
@@ -545,33 +505,24 @@ Future<bool> confirmAction(
 }) async {
   final ok = await showDialog<bool>(
     context: context,
+    // Radius 12, 18/600 title and 15/1.5 secondary body come from the dialog theme.
     builder: (ctx) => AlertDialog(
-      backgroundColor: AppColors.bgCard,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-      title: Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-      ),
-      content: Text(
-        message,
-        style: const TextStyle(color: AppColors.textSecondary, height: 1.4),
-      ),
+      title: Text(title),
+      content: Text(message),
       actions: [
-        TextButton(
+        OutlinedButton(
           onPressed: () => Navigator.of(ctx).pop(false),
           child: const Text('Cancel'),
         ),
         FilledButton(
           onPressed: () => Navigator.of(ctx).pop(true),
-          style: FilledButton.styleFrom(
-            backgroundColor: danger
-                ? AppColors.accentDanger
-                : AppColors.accentGold,
-          ),
-          child: Text(
-            confirmLabel,
-            style: const TextStyle(fontWeight: FontWeight.w800),
-          ),
+          style: danger
+              ? FilledButton.styleFrom(
+                  backgroundColor: ctx.colors.danger,
+                  foregroundColor: Colors.white,
+                )
+              : null,
+          child: Text(confirmLabel),
         ),
       ],
     ),
@@ -579,7 +530,7 @@ Future<bool> confirmAction(
   return ok == true;
 }
 
-/// A white rounded card, the app's basic surface.
+/// The app's basic surface: card colour, 1px border, radius 12, the faint panel shadow.
 class SurfaceCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -597,10 +548,10 @@ class SurfaceCard extends StatelessWidget {
     final card = Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.borderLight),
-        boxShadow: AppColors.cardShadow,
+        color: context.colors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.colors.border),
+        boxShadow: context.colors.panelShadow,
       ),
       child: child,
     );
