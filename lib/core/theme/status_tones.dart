@@ -29,6 +29,30 @@ const Map<String, StatusLook> returnStatuses = {
   'REJECTED': (label: 'Turned down', tone: Tone.danger),
 };
 
+/// Where a parcel is: waiting, being picked, packed, sent, delivered.
+const Map<String, StatusLook> dispatchStatuses = {
+  'PENDING': (label: 'Waiting', tone: Tone.neutral),
+  'PICKING': (label: 'Being picked', tone: Tone.warning),
+  'PACKED': (label: 'Packed', tone: Tone.info),
+  'SHIPPED': (label: 'Sent', tone: Tone.info),
+  'DELIVERED': (label: 'Delivered', tone: Tone.success),
+  'CANCELLED': (label: 'Cancelled', tone: Tone.danger),
+};
+
+/// What happens to a returned piece after inspection.
+const Map<String, StatusLook> returnDispositions = {
+  'PENDING': (label: 'Not inspected yet', tone: Tone.warning),
+  'RESTOCK': (label: 'Restock', tone: Tone.success),
+  'DAMAGED': (label: 'Damaged', tone: Tone.danger),
+  'SCRAP': (label: 'Scrap', tone: Tone.neutral),
+};
+
+const Map<String, StatusLook> customerStatuses = {
+  'ACTIVE': (label: 'Active', tone: Tone.success),
+  'INACTIVE': (label: 'Inactive', tone: Tone.neutral),
+  'ARCHIVED': (label: 'Archived', tone: Tone.danger),
+};
+
 const Map<String, StatusLook> purchaseOrderStatuses = {
   'DRAFT': (label: 'Draft', tone: Tone.neutral),
   'SENT': (label: 'Sent', tone: Tone.info),

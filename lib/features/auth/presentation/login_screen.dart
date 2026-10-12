@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/core/widgets/brand_logo.dart';
 import 'package:scaleezy/features/auth/presentation/view_models/login_view_model.dart';
 
+/// Signing in, in the website's `AuthShell` frame (one column, as the web shows on a phone):
+/// the wordmark, what this is, and a card with the fields. Problems show above the button.
 class LoginScreen extends StatefulWidget {
   /// Tests pass their own; otherwise the screen makes and owns one.
   final LoginViewModel? viewModel;
@@ -18,10 +20,10 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   late final LoginViewModel _vm =
       widget.viewModel ?? LoginViewModel(SessionScope.read(context));
-  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscure = true;
+  bool _forgotOpen = false;
 
   @override
   void dispose() {
@@ -32,268 +34,269 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit({String? clientId}) async {
-    if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
     await _vm.submit(
       _emailController.text,
       _passwordController.text,
       clientId: clientId,
     );
-    final choice = _vm.workspaceChoice;
-    if (choice == null || !mounted) return;
-    final picked = await _pickWorkspace(choice);
-    if (picked != null) await _submit(clientId: picked);
   }
-
-  Future<String?> _pickWorkspace(WorkspaceChoiceRequired choice) {
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        backgroundColor: AppColors.bgCard,
-        title: Text(
-          choice.message,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-        ),
-        children: choice.clientIds
-            .map(
-              (id) => SimpleDialogOption(
-                onPressed: () => Navigator.of(ctx).pop(id),
-                child: Text(
-                  id,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-            )
-            .toList(),
-      ),
-    );
-  }
-
-  InputDecoration _decoration(String hint, IconData icon, {Widget? suffix}) =>
-      InputDecoration(
-        filled: true,
-        fillColor: AppColors.bgCard,
-        hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 14),
-        prefixIcon: Icon(icon, color: AppColors.textSecondary, size: 20),
-        suffixIcon: suffix,
-        contentPadding: const EdgeInsets.symmetric(vertical: 16),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.borderLight),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.accentGold),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.accentDanger),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.accentDanger),
-        ),
-      );
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _vm,
-      builder: (context, _) => _buildScreen(),
-    );
-  }
-
-  Widget _buildScreen() {
-    final busy = _vm.submitting;
-    final error = _vm.error;
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-            child:
-                ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 420),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Center(
-                              child: Container(
-                                width: 64,
-                                height: 64,
-                                decoration: BoxDecoration(
-                                  gradient: AppColors.goldGradient,
-                                  borderRadius: BorderRadius.circular(18),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.accentGold.withValues(
-                                        alpha: 0.25,
-                                      ),
-                                      blurRadius: 14,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: const Center(
-                                  child: Text(
-                                    'SE',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            const Text(
-                              'Sign in to ScaleEzy',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.textPrimary,
-                                letterSpacing: -0.6,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Use the same email and password as the web app',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                            const SizedBox(height: 28),
-                            TextFormField(
-                              controller: _emailController,
-                              keyboardType: TextInputType.emailAddress,
-                              autofillHints: const [AutofillHints.email],
-                              textInputAction: TextInputAction.next,
-                              enabled: !busy,
-                              decoration: _decoration(
-                                'Email',
-                                Icons.mail_outline_rounded,
-                              ),
-                              validator: (v) => (v == null || !v.contains('@'))
-                                  ? 'Enter your email'
-                                  : null,
-                            ),
-                            const SizedBox(height: 12),
-                            TextFormField(
-                              controller: _passwordController,
-                              obscureText: _obscure,
-                              autofillHints: const [AutofillHints.password],
-                              textInputAction: TextInputAction.done,
-                              enabled: !busy,
-                              onFieldSubmitted: (_) => _submit(),
-                              decoration: _decoration(
-                                'Password',
-                                Icons.lock_outline_rounded,
-                                suffix: IconButton(
-                                  icon: Icon(
-                                    _obscure
-                                        ? Icons.visibility_outlined
-                                        : Icons.visibility_off_outlined,
-                                    color: AppColors.textSecondary,
-                                    size: 20,
-                                  ),
-                                  onPressed: () =>
-                                      setState(() => _obscure = !_obscure),
-                                ),
-                              ),
-                              validator: (v) => (v == null || v.isEmpty)
-                                  ? 'Enter your password'
-                                  : null,
-                            ),
-                            if (error != null) ...[
-                              const SizedBox(height: 14),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.accentDangerLight,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: AppColors.accentDanger.withValues(
-                                      alpha: 0.2,
-                                    ),
-                                  ),
-                                ),
-                                child: Text(
-                                  error,
-                                  style: const TextStyle(
-                                    color: AppColors.accentDanger,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 20),
-                            ElevatedButton(
-                              onPressed: busy ? null : () => _submit(),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.accentGold,
-                                foregroundColor: Colors.white,
-                                disabledBackgroundColor: AppColors.accentGold
-                                    .withValues(alpha: 0.6),
-                                elevation: 0,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 16,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              child: busy
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.5,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Sign in',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                            ),
-                            if (busy) ...[
-                              const SizedBox(height: 12),
-                              const Text(
-                                'The server can take a little while to answer. Hang on.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textMuted,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    )
-                    .animate()
-                    .fadeIn(duration: 500.ms)
-                    .moveY(
-                      begin: 24,
-                      end: 0,
-                      duration: 600.ms,
-                      curve: Curves.easeOutCubic,
+        child: ListenableBuilder(
+          listenable: _vm,
+          builder: (context, _) => ListView(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 48),
+            children: [
+              const Align(alignment: Alignment.centerLeft, child: BrandLogo()),
+              const SizedBox(height: 32),
+              Text(
+                'WELCOME BACK',
+                textAlign: TextAlign.center,
+                style: type.labelSmall!.copyWith(
+                  color: c.brandInk,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Sign in to your shop',
+                textAlign: TextAlign.center,
+                style: type.headlineMedium!.copyWith(
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -1,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Your stock, your costs and your margins, exactly where you left them.',
+                textAlign: TextAlign.center,
+                style: type.bodyLarge!.copyWith(
+                  color: c.textSecondary,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: c.card,
+                      border: Border.all(color: c.border),
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: c.panelShadow,
                     ),
+                    child: _vm.workspaceChoice == null
+                        ? _form(context)
+                        : _workspaces(context, _vm.workspaceChoice!),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _label(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 9),
+    child: Text(
+      text.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall!.copyWith(
+        color: context.colors.textMuted,
+        letterSpacing: 1,
+      ),
+    ),
+  );
+
+  Widget _form(BuildContext context) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    final busy = _vm.submitting;
+    final error = _vm.error;
+    final field = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: c.border),
+    );
+    InputDecoration decoration(
+      String hint, {
+      Widget? suffix,
+    }) => InputDecoration(
+      hintText: hint,
+      suffixIcon: suffix,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      border: field,
+      enabledBorder: field,
+      focusedBorder: field.copyWith(borderSide: BorderSide(color: c.brandInk)),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _label(context, 'Email address'),
+        TextField(
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          autofillHints: const [AutofillHints.email],
+          textInputAction: TextInputAction.next,
+          enabled: !busy,
+          decoration: decoration('you@yourshop.com'),
+        ),
+        const SizedBox(height: 20),
+        _label(context, 'Password'),
+        TextField(
+          controller: _passwordController,
+          obscureText: _obscure,
+          autofillHints: const [AutofillHints.password],
+          textInputAction: TextInputAction.done,
+          enabled: !busy,
+          onSubmitted: (_) => _submit(),
+          decoration: decoration(
+            'Your password',
+            suffix: IconButton(
+              tooltip: _obscure ? 'Show password' : 'Hide password',
+              icon: Icon(
+                _obscure
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                size: 20,
+                color: c.textMuted,
+              ),
+              onPressed: () => setState(() => _obscure = !_obscure),
+            ),
+          ),
+        ),
+        if (error != null) ...[
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            decoration: BoxDecoration(
+              color: tint(c.danger),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: tint(c.danger, 0.3)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.error_outline_rounded, size: 17, color: c.danger),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    error,
+                    style: type.bodyMedium!.copyWith(
+                      color: c.danger,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 24),
+        FilledButton(
+          onPressed: busy ? null : () => _submit(),
+          style: FilledButton.styleFrom(
+            backgroundColor: c.brandSolid,
+            foregroundColor: c.onBrandSolid,
+            disabledBackgroundColor: tint(c.brandSolid, 0.75),
+            disabledForegroundColor: c.onBrandSolid,
+            minimumSize: const Size.fromHeight(54),
+            shape: const StadiumBorder(),
+            textStyle: type.titleMedium!.copyWith(fontWeight: FontWeight.w700),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (busy) ...[
+                SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: c.onBrandSolid,
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Text(busy ? 'Signing in…' : 'Sign in'),
+              if (!busy) ...[
+                const SizedBox(width: 10),
+                const Icon(Icons.arrow_forward_rounded, size: 18),
+              ],
+            ],
+          ),
+        ),
+        if (busy) ...[
+          const SizedBox(height: 12),
+          Text(
+            'The server can take a little while to answer. Hang on.',
+            textAlign: TextAlign.center,
+            style: type.labelMedium!.copyWith(color: c.textMuted),
+          ),
+        ],
+        const SizedBox(height: 16),
+        // No self-service reset: the owner or an admin sets passwords. Saying so beats
+        // trying passwords until the sign-in is rate-limited.
+        TextButton(
+          onPressed: () => setState(() => _forgotOpen = !_forgotOpen),
+          style: TextButton.styleFrom(foregroundColor: c.textSecondary),
+          child: const Text('Forgot your password?'),
+        ),
+        if (_forgotOpen)
+          Text(
+            'Ask your shop owner or manager. They can set a new one for you in '
+            'Settings → Team members.',
+            textAlign: TextAlign.center,
+            style: type.bodyMedium!.copyWith(
+              color: c.textSecondary,
+              height: 1.6,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _workspaces(BuildContext context, WorkspaceChoiceRequired choice) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'This email is used in more than one shop. Choose which one to sign into.',
+          style: type.bodyLarge!.copyWith(color: c.textSecondary, height: 1.6),
+        ),
+        const SizedBox(height: 14),
+        for (final id in choice.clientIds) ...[
+          OutlinedButton.icon(
+            onPressed: _vm.submitting ? null : () => _submit(clientId: id),
+            icon: Icon(Icons.business_rounded, size: 18, color: c.brandInk),
+            label: Text(id),
+            style: OutlinedButton.styleFrom(
+              backgroundColor: c.input,
+              alignment: Alignment.centerLeft,
+              minimumSize: const Size.fromHeight(52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+        TextButton(
+          onPressed: _vm.cancelWorkspaceChoice,
+          style: TextButton.styleFrom(foregroundColor: c.textSecondary),
+          child: const Text('← Back'),
+        ),
+      ],
     );
   }
 }

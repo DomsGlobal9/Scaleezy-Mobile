@@ -85,12 +85,16 @@ String firstLandingPath(AuthSession session) =>
     Paths.settings;
 
 /// Sign-in decides where everyone may be: splash while the saved session is checked, sign-in
-/// when signed out (remembering where they were), and back there once signed in.
+/// when signed out (remembering where they were after an expired session, never after a
+/// deliberate sign-out: the next person starts fresh), and back there once signed in.
 String? authRedirect(AuthSession session, Uri uri) {
   final path = uri.path;
   final atGate = path == Paths.splash || path == Paths.login;
   final from = atGate ? uri.queryParameters['from'] : uri.toString();
+  final leftOnPurpose =
+      session.status == AuthStatus.signedOut && session.signedOutOnPurpose;
   final goBack =
+      !leftOnPurpose &&
       from != null &&
       from != '/' &&
       !from.startsWith(Paths.login) &&
@@ -123,15 +127,7 @@ GoRouter buildRouter(AuthSession session) {
       GoRoute(path: '/', redirect: (_, _) => Paths.dashboard),
       GoRoute(
         path: Paths.splash,
-        pageBuilder: (_, state) => _fade(
-          state,
-          const Scaffold(
-            backgroundColor: AppColors.bgLight,
-            body: Center(
-              child: CircularProgressIndicator(color: AppColors.accentGold),
-            ),
-          ),
-        ),
+        pageBuilder: (_, state) => _fade(state, const _Splash()),
       ),
       GoRoute(
         path: Paths.login,
@@ -144,7 +140,7 @@ GoRouter buildRouter(AuthSession session) {
         path: Paths.pickWalk,
         builder: (_, state) => _guard(
           'shelf:putaway',
-          'picking orders',
+          'pick orders',
           PickWalkScreen(
             locationId: state.uri.queryParameters['location'] ?? '',
             orderIds: (state.uri.queryParameters['orders'] ?? '')
@@ -158,7 +154,7 @@ GoRouter buildRouter(AuthSession session) {
         path: Paths.findPiece,
         builder: (_, state) => _guard(
           'shelf:view',
-          'shelves',
+          'look up where an item is',
           FindPieceScreen(
             locationId: state.uri.queryParameters['location'],
             initialQuery: state.uri.queryParameters['q'],
@@ -169,20 +165,20 @@ GoRouter buildRouter(AuthSession session) {
         path: '${Paths.shelves}/spots/:spotId',
         builder: (_, state) => _guard(
           'shelf:view',
-          'shelves',
+          null,
           SpotScreen(spotId: state.pathParameters['spotId']!),
         ),
       ),
       GoRoute(
         path: Paths.putAway,
         builder: (_, state) =>
-            _guard('shelf:putaway', 'putting away', _putAway(state)),
+            _guard('shelf:putaway', 'put stock away', _putAway(state)),
       ),
       GoRoute(
         path: '${Paths.orders}/:id/receipt',
         builder: (_, state) => _guard(
           'sales_order:view',
-          'orders',
+          null,
           ReceiptScreen(orderId: state.pathParameters['id']!),
         ),
       ),
@@ -192,7 +188,7 @@ GoRouter buildRouter(AuthSession session) {
           final id = state.pathParameters['id']!;
           return _guard(
             'purchase_order:receive',
-            'receiving deliveries',
+            null,
             _Fetched<PurchaseOrderDetail>(
               title: 'Receive Now',
               value: state.extra as PurchaseOrderDetail?,
@@ -206,7 +202,7 @@ GoRouter buildRouter(AuthSession session) {
         path: Paths.transfers,
         builder: (_, _) => _guard(
           'inventory:transfer',
-          'moving stock',
+          'move stock between stores',
           const TransferScreen(),
         ),
       ),
@@ -222,7 +218,7 @@ GoRouter buildRouter(AuthSession session) {
                 path: Paths.dashboard,
                 builder: (context, _) => _guard(
                   'dashboard:view',
-                  'the dashboard',
+                  null,
                   HomeScreen(
                     onNavigateTab: (tab) =>
                         MainNavigationScreen.selectTab(context, tab),
@@ -236,7 +232,7 @@ GoRouter buildRouter(AuthSession session) {
               GoRoute(
                 path: Paths.products,
                 builder: (_, _) =>
-                    _guard('product:view', 'products', const ProductsScreen()),
+                    _guard('product:view', null, const ProductsScreen()),
                 routes: [
                   GoRoute(
                     path: ':id',
@@ -244,7 +240,7 @@ GoRouter buildRouter(AuthSession session) {
                       final id = state.pathParameters['id']!;
                       return _guard(
                         'product:view',
-                        'products',
+                        null,
                         _Fetched<ProductItem>(
                           title: 'Product',
                           value: state.extra as ProductItem?,
@@ -274,13 +270,13 @@ GoRouter buildRouter(AuthSession session) {
               GoRoute(
                 path: Paths.orders,
                 builder: (_, _) =>
-                    _guard('sales_order:view', 'orders', const OrdersScreen()),
+                    _guard('sales_order:view', null, const OrdersScreen()),
                 routes: [
                   GoRoute(
                     path: ':id',
                     builder: (_, state) => _guard(
                       'sales_order:view',
-                      'orders',
+                      null,
                       OrderDetailScreen(orderId: state.pathParameters['id']!),
                     ),
                   ),
@@ -293,14 +289,17 @@ GoRouter buildRouter(AuthSession session) {
               GoRoute(path: Paths.more, builder: (_, _) => const MoreScreen()),
               GoRoute(
                 path: Paths.shelves,
-                builder: (_, _) =>
-                    _guard('shelf:view', 'shelves', const ShelvesScreen()),
+                builder: (_, _) => _guard(
+                  'shelf:view',
+                  'look up where an item is',
+                  const ShelvesScreen(),
+                ),
                 routes: [
                   GoRoute(
                     path: 'pick',
                     builder: (_, state) => _guard(
                       'shelf:putaway',
-                      'picking orders',
+                      'pick orders',
                       PickOrdersScreen(location: state.extra as StockLocation?),
                     ),
                   ),
@@ -310,7 +309,7 @@ GoRouter buildRouter(AuthSession session) {
                 path: Paths.stockCounts,
                 builder: (_, _) => _guard(
                   'stock_count:view',
-                  'stock counts',
+                  'work with stock counts',
                   const StockCountsScreen(),
                 ),
                 routes: [
@@ -318,7 +317,7 @@ GoRouter buildRouter(AuthSession session) {
                     path: ':id',
                     builder: (_, state) => _guard(
                       'stock_count:view',
-                      'stock counts',
+                      'work with stock counts',
                       StockCountScreen(countId: state.pathParameters['id']!),
                     ),
                   ),
@@ -328,7 +327,7 @@ GoRouter buildRouter(AuthSession session) {
                 path: Paths.purchaseOrders,
                 builder: (_, state) => _guard(
                   'purchase_order:view',
-                  'purchase orders',
+                  null,
                   PurchaseOrdersScreen(
                     filter: state.uri.queryParameters['filter'],
                   ),
@@ -338,7 +337,7 @@ GoRouter buildRouter(AuthSession session) {
                     path: ':id',
                     builder: (_, state) => _guard(
                       'purchase_order:view',
-                      'purchase orders',
+                      null,
                       PurchaseOrderScreen(poId: state.pathParameters['id']!),
                     ),
                   ),
@@ -346,25 +345,19 @@ GoRouter buildRouter(AuthSession session) {
               ),
               GoRoute(
                 path: Paths.suppliers,
-                builder: (_, _) => _guard(
-                  'supplier:view',
-                  'suppliers',
-                  const SuppliersScreen(),
-                ),
+                builder: (_, _) =>
+                    _guard('supplier:view', null, const SuppliersScreen()),
               ),
               GoRoute(
                 path: Paths.customers,
-                builder: (_, _) => _guard(
-                  'customer:view',
-                  'customers',
-                  const CustomersScreen(),
-                ),
+                builder: (_, _) =>
+                    _guard('customer:view', null, const CustomersScreen()),
                 routes: [
                   GoRoute(
                     path: ':id',
                     builder: (_, state) => _guard(
                       'customer:view',
-                      'customers',
+                      null,
                       CustomerDetailScreen(
                         customerId: state.pathParameters['id']!,
                         preview: state.extra as Customer?,
@@ -375,11 +368,8 @@ GoRouter buildRouter(AuthSession session) {
               ),
               GoRoute(
                 path: Paths.dayBook,
-                builder: (_, _) => _guard(
-                  'report:financial',
-                  'the day book',
-                  const DayBookScreen(),
-                ),
+                builder: (_, _) =>
+                    _guard('report:financial', null, const DayBookScreen()),
               ),
               GoRoute(
                 path: Paths.settings,
@@ -387,11 +377,8 @@ GoRouter buildRouter(AuthSession session) {
                 routes: [
                   GoRoute(
                     path: 'team',
-                    builder: (_, _) => _guard(
-                      'admin:users',
-                      'team and users',
-                      const TeamScreen(),
-                    ),
+                    builder: (_, _) =>
+                        _guard('admin:users', null, const TeamScreen()),
                   ),
                 ],
               ),
@@ -415,17 +402,71 @@ Page<void> _fade(GoRouterState state, Widget child) => CustomTransitionPage(
 );
 
 /// [screen] when the role holds [permission]; otherwise NoAccess in its place, keeping the
-/// address, as the web's `<Guard>`.
-Widget _guard(String permission, String what, Widget screen) => Builder(
+/// address, as the web's `<Guard>`. [what] is the web's phrase for the screen ("pick orders"
+/// reads "You cannot pick orders"), null where the web has none.
+Widget _guard(String permission, String? what, Widget screen) => Builder(
   builder: (context) {
     final session = SessionScope.of(context);
     if (session.can(permission)) return screen;
     return NoAccessScreen(
       what: what,
+      permission: permission,
       onLeave: () => context.go(firstLandingPath(session)),
     );
   },
 );
+
+/// While the saved session is checked; if the server cannot be reached, says so and keeps the
+/// session for another try instead of asking to sign in again.
+class _Splash extends StatelessWidget {
+  const _Splash();
+
+  @override
+  Widget build(BuildContext context) {
+    final session = SessionScope.of(context);
+    final error = session.restoreError;
+    final type = Theme.of(context).textTheme;
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: error == null
+              ? const CircularProgressIndicator()
+              : Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.cloud_off_rounded,
+                        size: 40,
+                        color: context.colors.textMuted,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        "Couldn't reach the server",
+                        textAlign: TextAlign.center,
+                        style: type.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        error,
+                        textAlign: TextAlign.center,
+                        style: type.bodySmall,
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: session.restore,
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Put away at `?location=`, onto `?spot=` when given (passed in, else fetched).
 Widget _putAway(GoRouterState state) {
@@ -491,14 +532,13 @@ class _FetchedState<T extends Object> extends State<_Fetched<T>> {
         if (value != null) return widget.builder(value);
         final error = _vm.error;
         return Scaffold(
-          backgroundColor: AppColors.bgLight,
           body: SafeArea(
             child: Column(
               children: [
                 PageHeader(title: widget.title),
                 Expanded(
                   child: error != null
-                      ? ErrorView(message: error, onRetry: _vm.load)
+                      ? ErrorView.fromError(error, onRetry: _vm.load)
                       : const LoadingView(),
                 ),
               ],
@@ -517,10 +557,10 @@ class _FetchViewModel<T extends Object> extends ViewModel {
 
   final Future<T> Function() _fetch;
   T? _value;
-  String? _error;
+  ApiException? _error;
 
   T? get value => _value;
-  String? get error => _error;
+  ApiException? get error => _error;
 
   Future<void> load() async {
     _error = null;
@@ -528,7 +568,7 @@ class _FetchViewModel<T extends Object> extends ViewModel {
     try {
       _value = await _fetch();
     } on ApiException catch (e) {
-      _error = e.message;
+      _error = e;
     }
     notifyListeners();
   }

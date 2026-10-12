@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import 'package:scaleezy/app/app_routes.dart';
@@ -5,14 +6,15 @@ import 'package:scaleezy/app/router.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/core/theme/theme_mode_store.dart';
+import 'package:scaleezy/core/utils/labels.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 
 class _Module {
   final IconData icon;
   final String title;
   final String blurb;
-  final Color color;
-  final Color bg;
+  final Tone tone;
   final String? permission;
   final String path;
 
@@ -23,15 +25,15 @@ class _Module {
     this.icon,
     this.title,
     this.blurb,
-    this.color,
-    this.bg,
+    this.tone,
     this.permission,
     this.path, {
     this.onlyIf,
   });
 }
 
-/// Everything beyond the four main tabs. A module only shows when the role can open it.
+/// Everything beyond the four main tabs, laid out like the website's settings hub: who is
+/// signed in and in which shop, the tools the role can open, appearance and the account.
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
 
@@ -40,8 +42,7 @@ class MoreScreen extends StatelessWidget {
       Icons.shelves,
       'Shelves',
       'Where every piece sits',
-      AppColors.accentGold,
-      AppColors.accentGoldLight,
+      Tone.success,
       'shelf:view',
       Paths.shelves,
     ),
@@ -49,8 +50,7 @@ class MoreScreen extends StatelessWidget {
       Icons.fact_check_rounded,
       'Stock count',
       'Check shelves against stock',
-      AppColors.accentDanger,
-      AppColors.accentDangerLight,
+      Tone.gold,
       'stock_count:view',
       Paths.stockCounts,
     ),
@@ -58,8 +58,7 @@ class MoreScreen extends StatelessWidget {
       Icons.move_to_inbox_rounded,
       'Purchase Orders',
       'Receive deliveries',
-      AppColors.accentBlue,
-      AppColors.accentBlueLight,
+      Tone.info,
       'purchase_order:view',
       Paths.purchaseOrders,
     ),
@@ -67,8 +66,7 @@ class MoreScreen extends StatelessWidget {
       Icons.swap_horiz_rounded,
       'Move stock',
       'To another store',
-      AppColors.textPrimary,
-      AppColors.bgSurface,
+      Tone.neutral,
       'inventory:transfer',
       Paths.transfers,
       // Moving needs two real stores; the online shop does not count.
@@ -79,8 +77,7 @@ class MoreScreen extends StatelessWidget {
       Icons.people_alt_rounded,
       'Customers',
       'Look up, add, call',
-      AppColors.accentPurple,
-      AppColors.accentPurpleLight,
+      Tone.purple,
       'customer:view',
       Paths.customers,
     ),
@@ -88,8 +85,7 @@ class MoreScreen extends StatelessWidget {
       Icons.menu_book_rounded,
       'Day book',
       'One day, closed off',
-      AppColors.accentDanger,
-      AppColors.accentDangerLight,
+      Tone.danger,
       'report:financial',
       Paths.dayBook,
     ),
@@ -97,8 +93,7 @@ class MoreScreen extends StatelessWidget {
       Icons.handshake_rounded,
       'Suppliers',
       'Who you buy from',
-      AppColors.accentSuccess,
-      AppColors.accentSuccessLight,
+      Tone.success,
       'supplier:view',
       Paths.suppliers,
     ),
@@ -106,8 +101,7 @@ class MoreScreen extends StatelessWidget {
       Icons.badge_rounded,
       'Team & Users',
       'People and their roles',
-      AppColors.accentWarning,
-      const Color(0xFFFFFBEB),
+      Tone.warning,
       'admin:users',
       Paths.team,
     ),
@@ -117,7 +111,8 @@ class MoreScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final session = SessionScope.of(context);
     final shop = ShopScope.of(context);
-    final user = session.user;
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     final modules = _modules
         .where((m) => m.permission == null || session.can(m.permission!))
         .where((m) => m.onlyIf?.call(shop) ?? true)
@@ -126,88 +121,13 @@ class MoreScreen extends StatelessWidget {
     void open(String path) => AppRoutes.open(context, path);
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
           children: [
-            const Text(
-              'More',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.7,
-              ),
-            ).entrance(0),
+            Text('More', style: type.headlineSmall).entrance(0),
             const SizedBox(height: 14),
-            // Who is signed in, and where
-            Pressable(
-              onTap: () => open(Paths.settings),
-              child: Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  gradient: AppColors.heroGradient,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: AppColors.goldGradient,
-                        border: Border.all(color: Colors.white24, width: 2),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        initialsOf(user?.name ?? ''),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            user?.name ?? '',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            [
-                                  user?.roles.firstOrNull,
-                                  shop.branding.businessName ?? user?.clientId,
-                                ]
-                                .whereType<String>()
-                                .where((s) => s.isNotEmpty)
-                                .join(' • '),
-                            style: const TextStyle(
-                              color: Color(0xFF94A3B8),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(
-                      Icons.settings_rounded,
-                      color: Color(0xFFFDE68A),
-                    ),
-                  ],
-                ),
-              ),
-            ).entrance(1),
+            _Profile(onTap: () => open(Paths.settings)).entrance(1),
             const SizedBox(height: 22),
             if (modules.isNotEmpty) ...[
               const SectionHeader(title: 'Tools').entrance(2),
@@ -216,8 +136,8 @@ class MoreScreen extends StatelessWidget {
                 shrinkWrap: true,
                 padding: EdgeInsets.zero,
                 physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
                 childAspectRatio: 1.25,
                 children: [
                   for (final (i, m) in modules.indexed)
@@ -229,26 +149,22 @@ class MoreScreen extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: m.bg,
-                              borderRadius: BorderRadius.circular(14),
+                              color: tint(c.tone(m.tone)),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Icon(m.icon, color: m.color, size: 22),
+                            child: Icon(
+                              m.icon,
+                              color: c.tone(m.tone),
+                              size: 22,
+                            ),
                           ),
                           const Spacer(),
-                          Text(
-                            m.title,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
+                          Text(m.title, style: type.titleSmall),
                           const SizedBox(height: 2),
                           Text(
                             m.blurb,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textMuted,
-                              fontWeight: FontWeight.w600,
+                            style: type.labelMedium!.copyWith(
+                              color: c.textMuted,
                             ),
                           ),
                         ],
@@ -258,31 +174,34 @@ class MoreScreen extends StatelessWidget {
               ),
               const SizedBox(height: 22),
             ],
-            const SectionHeader(title: 'Account').entrance(9),
+            if (ThemeModeScope.maybeOf(context) case final store?) ...[
+              const SectionHeader(title: 'Appearance').entrance(9),
+              _Appearance(store).entrance(9),
+              const SizedBox(height: 22),
+            ],
+            const SectionHeader(title: 'Account').entrance(10),
             SurfaceCard(
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   _row(
+                    context,
                     Icons.person_outline_rounded,
                     'Profile and shop details',
                     () => open(Paths.settings),
                   ),
                   const Divider(height: 1, indent: 56),
-                  _row(Icons.logout_rounded, 'Sign out', () async {
-                    if (await confirmAction(
-                      context,
-                      title: 'Sign out?',
-                      message:
-                          'You will need your email and password to come back in.',
-                      confirmLabel: 'Sign out',
-                    )) {
-                      session.logout();
-                    }
-                  }, danger: true),
+                  // No confirmation, as everywhere else (and on the website).
+                  _row(
+                    context,
+                    Icons.logout_rounded,
+                    'Sign out',
+                    session.logout,
+                    danger: true,
+                  ),
                 ],
               ),
-            ).entrance(10),
+            ).entrance(11),
           ],
         ),
       ),
@@ -290,26 +209,152 @@ class MoreScreen extends StatelessWidget {
   }
 
   Widget _row(
+    BuildContext context,
     IconData icon,
     String label,
     VoidCallback onTap, {
     bool danger = false,
-  }) => ListTile(
-    onTap: onTap,
-    leading: Icon(
-      icon,
-      color: danger ? AppColors.accentDanger : AppColors.textSecondary,
-    ),
-    title: Text(
-      label,
-      style: TextStyle(
-        fontWeight: FontWeight.w700,
-        fontSize: 14,
-        color: danger ? AppColors.accentDanger : AppColors.textPrimary,
+  }) {
+    final c = context.colors;
+    return ListTile(
+      onTap: onTap,
+      leading: Icon(icon, color: danger ? c.danger : c.textSecondary),
+      title: Text(
+        label,
+        style: Theme.of(
+          context,
+        ).textTheme.titleSmall!.copyWith(color: danger ? c.danger : c.text),
       ),
-    ),
-    trailing: danger
-        ? null
-        : const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
-  );
+      trailing: danger
+          ? null
+          : Icon(Icons.chevron_right_rounded, color: c.textMuted),
+    );
+  }
+}
+
+/// The website's settings-hub profile block: the shop's logo (or the person's initials) on a
+/// white tile, name, role and shop, on the brand colour at 16%.
+class _Profile extends StatelessWidget {
+  final VoidCallback onTap;
+  const _Profile({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = SessionScope.of(context).user;
+    final branding = ShopScope.of(context).branding;
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    final initials = Center(
+      child: Text(
+        initialsOf(user?.name ?? ''),
+        style: type.titleLarge!.copyWith(
+          color: AppPalette.light.brandInk,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+    return Pressable(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(tint(c.brand, 0.16), c.card),
+          border: Border.all(color: c.border),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              clipBehavior: Clip.antiAlias,
+              // White in both themes so any logo reads.
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: c.border),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: branding.logoUrl == null
+                  ? initials
+                  : Padding(
+                      padding: const EdgeInsets.all(5),
+                      child: CachedNetworkImage(
+                        imageUrl: branding.logoUrl!,
+                        fit: BoxFit.contain,
+                        errorWidget: (_, _, _) => initials,
+                      ),
+                    ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    user?.name ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: type.titleMedium!.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    roleLabel(user),
+                    style: type.labelMedium!.copyWith(color: c.textSecondary),
+                  ),
+                  if ((branding.businessName ?? user?.clientId) != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      branding.businessName ?? user!.clientId,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: type.titleSmall,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: c.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// System / Light / Dark, applied at once and remembered.
+class _Appearance extends StatelessWidget {
+  final ThemeModeStore store;
+  const _Appearance(this.store);
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: SegmentedButton<ThemeMode>(
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment(
+            value: ThemeMode.system,
+            label: Text('System'),
+            icon: Icon(Icons.brightness_auto_rounded, size: 18),
+          ),
+          ButtonSegment(
+            value: ThemeMode.light,
+            label: Text('Light'),
+            icon: Icon(Icons.light_mode_rounded, size: 18),
+          ),
+          ButtonSegment(
+            value: ThemeMode.dark,
+            label: Text('Dark'),
+            icon: Icon(Icons.dark_mode_rounded, size: 18),
+          ),
+        ],
+        selected: {store.value},
+        onSelectionChanged: (picked) => store.save(picked.single),
+      ),
+    );
+  }
 }

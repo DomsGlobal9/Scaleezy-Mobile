@@ -23,14 +23,28 @@ class AuthSession extends ChangeNotifier {
 
   AuthStatus _status = AuthStatus.unknown;
   AuthUser? _user;
+  String? _restoreError;
+  bool _signedOutOnPurpose = false;
 
   AuthStatus get status => _status;
   AuthUser? get user => _user;
+
+  /// Set while the status stays unknown because the server could not be asked at start (not a
+  /// 401): the saved session is kept and the splash offers to [restore] again.
+  String? get restoreError => _restoreError;
+
+  /// True after the person pressed Sign out, so nothing of theirs (where they were, their
+  /// store) is kept for whoever signs in next. False after an expired session.
+  bool get signedOutOnPurpose => _signedOutOnPurpose;
 
   bool can(String permission) => _user?.can(permission) ?? false;
 
   /// App start: is the saved cookie still good?
   Future<void> restore() async {
+    if (_restoreError != null) {
+      _restoreError = null;
+      notifyListeners();
+    }
     try {
       final body = await _api.get(ApiEndpoints.session);
       if (body is Map && body['authenticated'] == true && body['user'] is Map) {
@@ -43,8 +57,13 @@ class AuthSession extends ChangeNotifier {
         );
         return;
       }
-    } on ApiException {
-      // 401 or unreachable -- either way, ask the person to sign in.
+    } on ApiException catch (e) {
+      // Only the server saying no ends the session; a phone without signal keeps it.
+      if (!e.isUnauthorized) {
+        _restoreError = e.message;
+        notifyListeners();
+        return;
+      }
     }
     _set(null);
   }
@@ -90,15 +109,16 @@ class AuthSession extends ChangeNotifier {
     } on ApiException {
       // Signing out locally still matters if the server is unreachable.
     }
-    _set(null);
+    _set(null, onPurpose: true);
   }
 
   void _expire() {
     if (_status == AuthStatus.signedIn) _set(null);
   }
 
-  void _set(AuthUser? user) {
+  void _set(AuthUser? user, {bool onPurpose = false}) {
     _user = user;
+    _signedOutOnPurpose = onPurpose;
     _status = user == null ? AuthStatus.signedOut : AuthStatus.signedIn;
     notifyListeners();
   }

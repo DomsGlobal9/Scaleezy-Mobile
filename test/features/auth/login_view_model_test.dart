@@ -54,4 +54,24 @@ void main() {
     expect(session.logins.last, ('asha@shop.in', 'secret', 'b'));
     expect(vm.workspaceChoice, isNull);
   });
+
+  test(
+    'obvious mistakes are answered here, without asking the server',
+    () async {
+      final session = FakeAuthSession();
+      final vm = LoginViewModel(session);
+
+      expect(
+        await vm.submit('  ', 'secret'),
+        'Enter the email address you signed up with.',
+      );
+      expect(
+        await vm.submit('asha@shop', 'secret'),
+        'That does not look like an email address.',
+      );
+      expect(await vm.submit('asha@shop.in', ''), 'Enter your password.');
+      expect(vm.error, 'Enter your password.');
+      expect(session.logins, isEmpty);
+    },
+  );
 }

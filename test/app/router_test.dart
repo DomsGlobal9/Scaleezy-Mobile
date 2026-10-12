@@ -24,9 +24,13 @@ class _Session extends AuthSession {
 
   AuthStatus _status = AuthStatus.unknown;
   Set<String> _perms = {};
+  bool onPurpose = false;
 
   @override
   AuthStatus get status => _status;
+
+  @override
+  bool get signedOutOnPurpose => onPurpose;
 
   @override
   bool can(String permission) => _perms.contains(permission);
@@ -141,6 +145,39 @@ void main() {
     expect(find.byType(CustomersScreen), findsNothing);
   });
 
+  testWidgets('a deliberate sign-out keeps nothing for the next person', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await signIn(tester, {'dashboard:view', 'customer:view'});
+    await go(tester, '/customers');
+
+    session.onPurpose = true;
+    session.become(AuthStatus.signedOut);
+    await tester.pumpAndSettle();
+    expect(location(tester), '/login');
+
+    session.onPurpose = false;
+    await signIn(tester, {'dashboard:view', 'customer:view'});
+    expect(location(tester), '/dashboard');
+  });
+
+  testWidgets('a page the role cannot open names what it wanted to do', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await signIn(tester, {'dashboard:view'});
+
+    await go(tester, '/shelves/pick');
+    expect(find.text('You cannot pick orders'), findsOneWidget);
+    expect(
+      find.text(
+        'Ask whoever manages your team for the permission to put stock away and move it.',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     'sign-in with nowhere to return to opens the first allowed page',
     (tester) async {
@@ -172,7 +209,14 @@ void main() {
     await go(tester, '/inventory/suppliers');
     expect(location(tester), '/inventory/suppliers');
     expect(find.byType(NoAccessScreen), findsOneWidget);
-    expect(find.textContaining('does not include suppliers'), findsOneWidget);
+    expect(find.text('Not part of your role'), findsOneWidget);
+    expect(
+      find.text(
+        'Ask whoever manages your team for the permission to see suppliers.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Try again'), findsNothing);
 
     await tester.tap(find.text('Go to a page you can open'));
     await tester.pumpAndSettle();

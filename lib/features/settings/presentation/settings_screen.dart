@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/core/utils/labels.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/settings/presentation/view_models/password_view_model.dart';
@@ -37,7 +38,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final b = shop.branding;
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.only(bottom: 40),
@@ -66,7 +66,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 context,
                 Icons.verified_user_outlined,
                 'Role',
-                (user?.roles ?? const []).join(', '),
+                roleLabel(user),
               ),
             ]).entrance(0),
             _section('Security', [
@@ -79,12 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   context: context,
                   useRootNavigator: true,
                   isScrollControlled: true,
-                  backgroundColor: AppColors.bgCard,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(26),
-                    ),
-                  ),
+                  showDragHandle: true,
                   builder: (_) => const _PasswordSheet(),
                 ),
               ),
@@ -180,34 +175,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _tile(context, Icons.cloud_outlined, 'Server', _vm.serverHost),
             ]).entrance(3),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              // No confirmation, as everywhere else (and on the website). The router then
+              // shows sign-in, with every screen above it gone.
               child: OutlinedButton.icon(
-                onPressed: () async {
-                  if (await confirmAction(
-                    context,
-                    title: 'Sign out?',
-                    message:
-                        'You will need your email and password to come back in.',
-                    confirmLabel: 'Sign out',
-                  )) {
-                    // The router then shows sign-in, with every screen above it gone.
-                    await _vm.signOut();
-                  }
-                },
+                onPressed: _vm.signOut,
                 icon: const Icon(Icons.logout_rounded),
-                label: const Text(
-                  'Sign out',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
+                label: const Text('Sign out'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.accentDanger,
-                  side: BorderSide(
-                    color: AppColors.accentDanger.withValues(alpha: 0.3),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+                  foregroundColor: context.colors.danger,
                 ),
               ),
             ).entrance(4),
@@ -218,7 +194,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _section(String title, List<Widget> tiles) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -226,12 +202,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.only(left: 4, bottom: 8),
           child: Text(
             title.toUpperCase(),
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textMuted,
-              letterSpacing: 0.8,
-            ),
+            style: Theme.of(context).textTheme.labelSmall,
           ),
         ),
         SurfaceCard(
@@ -257,30 +228,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     VoidCallback? onTap,
   }) => ListTile(
     onTap: onTap,
-    leading: Icon(icon, color: AppColors.textSecondary),
+    leading: Icon(icon, color: context.colors.textSecondary),
     title: Text(
       label,
-      style: const TextStyle(
-        fontSize: 12,
-        color: AppColors.textMuted,
-        fontWeight: FontWeight.w600,
-      ),
+      style: Theme.of(
+        context,
+      ).textTheme.labelMedium!.copyWith(color: context.colors.textMuted),
     ),
-    subtitle: Text(
-      value,
-      style: const TextStyle(
-        fontSize: 14,
-        color: AppColors.textPrimary,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
+    subtitle: Text(value, style: Theme.of(context).textTheme.titleSmall),
     trailing: onTap == null
         ? null
-        : const Icon(
-            Icons.edit_outlined,
-            size: 18,
-            color: AppColors.accentGold,
-          ),
+        : Icon(Icons.edit_outlined, size: 18, color: context.colors.brandInk),
   );
 
   Future<void> _editText(
@@ -298,17 +256,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
-      backgroundColor: AppColors.bgCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
+      showDragHandle: true,
       builder: (ctx) {
         String? error; // the last save's message, shown under the field
         return StatefulBuilder(
           builder: (ctx, set) => Padding(
             padding: EdgeInsets.fromLTRB(
               20,
-              18,
+              0,
               20,
               MediaQuery.of(ctx).viewInsets.bottom + 20,
             ),
@@ -316,13 +271,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
+                Text(title, style: Theme.of(ctx).textTheme.titleLarge),
                 const SizedBox(height: 14),
                 TextField(
                   controller: controller,
@@ -330,23 +279,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   keyboardType: lines > 1 ? TextInputType.multiline : keyboard,
                   maxLines: lines,
                   textCapitalization: TextCapitalization.words,
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: AppColors.bgSurface,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
                 ),
                 if (error != null) ...[
                   const SizedBox(height: 10),
                   Text(
                     error!,
-                    style: const TextStyle(
-                      color: AppColors.accentDanger,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: Theme.of(
+                      ctx,
+                    ).textTheme.bodyMedium!.copyWith(color: ctx.colors.danger),
                   ),
                 ],
                 const SizedBox(height: 14),
@@ -367,26 +307,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               showMessage(context, 'Saved.', success: true);
                             }
                           },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.accentGold,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
                     child: _vm.saving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
+                        ? SizedBox.square(
+                            dimension: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.5,
-                              color: Colors.white,
+                              color: ctx.colors.card,
                             ),
                           )
-                        : const Text(
-                            'Save',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
+                        : const Text('Save'),
                   ),
                 ),
               ],
@@ -437,15 +366,7 @@ class _PasswordSheetState extends State<_PasswordSheet> {
     child: TextField(
       controller: c,
       obscureText: !_show,
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: AppColors.bgSurface,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
-      ),
+      decoration: InputDecoration(labelText: label),
     ),
   );
 
@@ -462,7 +383,7 @@ class _PasswordSheetState extends State<_PasswordSheet> {
     return Padding(
       padding: EdgeInsets.fromLTRB(
         20,
-        18,
+        0,
         20,
         MediaQuery.of(context).viewInsets.bottom + 20,
       ),
@@ -472,10 +393,10 @@ class _PasswordSheetState extends State<_PasswordSheet> {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Change password',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
               IconButton(
@@ -497,34 +418,22 @@ class _PasswordSheetState extends State<_PasswordSheet> {
               padding: const EdgeInsets.only(bottom: 10),
               child: Text(
                 error,
-                style: const TextStyle(
-                  color: AppColors.accentDanger,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium!.copyWith(color: context.colors.danger),
               ),
             ),
           FilledButton(
             onPressed: _vm.busy ? null : _save,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.accentGold,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
             child: _vm.busy
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
+                ? SizedBox.square(
+                    dimension: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
-                      color: Colors.white,
+                      color: context.colors.card,
                     ),
                   )
-                : const Text(
-                    'Change password',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
+                : const Text('Change password'),
           ),
         ],
       ),

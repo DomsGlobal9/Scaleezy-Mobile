@@ -19,12 +19,38 @@ class LoginViewModel extends ViewModel {
   /// Set when the last sign-in needs a workspace picked; submit again with its clientId.
   WorkspaceChoiceRequired? get workspaceChoice => _workspaceChoice;
 
-  /// Null when signed in or a workspace must be picked, otherwise the server's message.
+  /// "Back" from the workspace list to the form.
+  void cancelWorkspaceChoice() {
+    _workspaceChoice = null;
+    notifyListeners();
+  }
+
+  /// The website's own checks before asking the server, in its words; null when both look
+  /// fine. Deliberately forgiving: the server decides whether an address exists.
+  static String? check(String email, String password) {
+    final address = email.trim();
+    if (address.isEmpty) return 'Enter the email address you signed up with.';
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(address)) {
+      return 'That does not look like an email address.';
+    }
+    if (password.isEmpty) return 'Enter your password.';
+    return null;
+  }
+
+  /// Null when signed in or a workspace must be picked, otherwise what went wrong: a field
+  /// [check] refused, or the server's message.
   Future<String?> submit(
     String email,
     String password, {
     String? clientId,
   }) async {
+    final problem = check(email, password);
+    if (problem != null) {
+      _error = problem;
+      _workspaceChoice = null;
+      notifyListeners();
+      return problem;
+    }
     _submitting = true;
     _error = null;
     _workspaceChoice = null;
