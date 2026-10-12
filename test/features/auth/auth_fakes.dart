@@ -1,10 +1,8 @@
-import 'package:dio/dio.dart';
-import 'package:scaleezy/core/network/api_client.dart';
-import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/session/auth_user.dart';
 
-/// A client that is never called: the fakes below answer instead.
-ApiClient offlineClient() => ApiClient.withDio(Dio());
+import '../../support/roles.dart';
+
+export '../../support/fake_api.dart' show offlineClient;
 
 AuthUser person({bool owner = false}) => AuthUser(
   id: 'u1',
@@ -16,8 +14,8 @@ AuthUser person({bool owner = false}) => AuthUser(
 );
 
 /// Records each login, restore and logout; [answer] decides how a login ends.
-class FakeAuthSession extends AuthSession {
-  FakeAuthSession({this.signedIn, this.answer}) : super(offlineClient());
+class FakeAuthSession extends TestSession {
+  FakeAuthSession({this.signedIn, this.answer}) : super(signedIn);
 
   AuthUser? signedIn;
   Future<void> Function(String? clientId)? answer;

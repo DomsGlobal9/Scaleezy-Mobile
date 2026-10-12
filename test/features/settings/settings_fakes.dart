@@ -1,5 +1,4 @@
 import 'package:scaleezy/core/network/api_client.dart';
-import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/shop/shop_models.dart';
 import 'package:scaleezy/core/shop/shop_repository.dart';
 import 'package:scaleezy/features/settings/data/account_repository.dart';
@@ -49,18 +48,4 @@ class FakeShopRepository extends ShopRepository {
     String? businessAddress,
     String? businessPhone,
   }) => _answer({'address': businessAddress, 'phone': businessPhone});
-}
-
-/// Fixed branding; counts reloads.
-class FakeShopContext extends ShopContext {
-  FakeShopContext([this._branding = const Branding()]) : super(offlineClient());
-
-  final Branding _branding;
-  int loads = 0;
-
-  @override
-  Branding get branding => _branding;
-
-  @override
-  Future<void> load() async => loads++;
 }

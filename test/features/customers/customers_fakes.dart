@@ -1,10 +1,10 @@
-import 'package:dio/dio.dart';
 import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/features/customers/data/customer_models.dart';
 import 'package:scaleezy/features/customers/data/customer_repository.dart';
 
-/// A client that is never called: the fakes below answer instead.
-ApiClient offlineClient() => ApiClient.withDio(Dio());
+import '../../support/fake_api.dart';
+
+export '../../support/fake_api.dart' show offlineClient;
 
 Customer customer(String id, {String name = 'Asha Rao', String? phone}) =>
     Customer.fromJson({

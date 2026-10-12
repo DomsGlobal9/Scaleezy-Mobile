@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/brand_logo.dart';
-import 'package:scaleezy/core/widgets/kpi_card.dart';
 import 'package:scaleezy/core/widgets/scan_sheet.dart';
 import 'package:scaleezy/core/widgets/status_pill.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
@@ -43,17 +42,6 @@ void main() {
                 const Skeleton(height: 20),
                 const NetImage(url: null, width: 60, height: 60),
                 QuantityStepper(value: 0, max: 3, onChanged: (_) {}),
-                SizedBox(
-                  height: 120,
-                  child: KpiCard(
-                    title: 'Sales today',
-                    value: '₹12,400',
-                    icon: Icons.payments,
-                    accentColor: AppPalette.light.success,
-                    bgColor: tint(AppPalette.light.success),
-                    subtitle: '+4 orders',
-                  ),
-                ),
                 for (final tone in Tone.values) StatusPill(tone.name, tone),
                 const StatusPill('Partly sent', Tone.warning, large: true),
                 const BrandLogo(),
@@ -73,7 +61,6 @@ void main() {
         expect(find.text('Orders'), findsOneWidget);
         expect(find.text('LOADING'), findsOneWidget);
         expect(find.text('Try again'), findsOneWidget);
-        expect(find.text('SALES TODAY'), findsOneWidget);
       });
 
       testWidgets('confirmAction answers Cancel and confirm', (tester) async {

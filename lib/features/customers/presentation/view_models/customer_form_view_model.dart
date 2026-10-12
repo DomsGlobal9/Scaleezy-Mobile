@@ -1,4 +1,5 @@
 import 'package:scaleezy/core/network/api_client.dart';
+import 'package:scaleezy/core/utils/json_parse.dart';
 import 'package:scaleezy/core/view_model/view_model.dart';
 import 'package:scaleezy/features/customers/data/customer_models.dart';
 import 'package:scaleezy/features/customers/data/customer_repository.dart';
@@ -68,7 +69,10 @@ class CustomerFormViewModel extends ViewModel {
       // Stays busy: the form closes on success.
       return null;
     } on ApiException catch (e) {
-      if (e.statusCode == 409 && stored != null) _taken = await _holder(stored);
+      if (e.statusCode == 409 && stored != null) {
+        final holder = _named(e) ?? await _lookUp(stored);
+        _taken = holder?.id == existing?.id ? null : holder;
+      }
       _busy = false;
       _error = e.message;
       notifyListeners();
@@ -76,12 +80,24 @@ class CustomerFormViewModel extends ViewModel {
     }
   }
 
-  // The server's 409 names the holder at the top level of its body, which ApiException does not
-  // keep, so the number is looked up instead.
-  Future<Customer?> _holder(String phone) async {
+  /// The holder the server's 409 names: at the top of its body from the customer routes, or in
+  /// `details` (code PHONE_TAKEN) from routes that answer through respondWithError.
+  static Customer? _named(ApiException e) {
+    String? field(String key) =>
+        asOptString(e.body?[key]) ?? asOptString(e.details?[key]);
+    final id = field('existingCustomerId');
+    if (id == null) return null;
+    return Customer.fromJson({
+      'id': id,
+      'name': field('existingCustomerName'),
+      'customerCode': field('existingCustomerCode'),
+    });
+  }
+
+  // Only when the answer did not name them (an older server).
+  Future<Customer?> _lookUp(String phone) async {
     try {
-      final holder = await _repo.customerByPhone(phone);
-      return holder?.id == existing?.id ? null : holder;
+      return await _repo.customerByPhone(phone);
     } on ApiException {
       return null;
     }

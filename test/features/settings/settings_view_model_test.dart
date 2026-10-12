@@ -4,19 +4,23 @@ import 'package:scaleezy/features/settings/presentation/view_models/password_vie
 import 'package:scaleezy/features/settings/presentation/view_models/settings_view_model.dart';
 
 import '../auth/auth_fakes.dart';
+import '../../support/roles.dart';
 import 'settings_fakes.dart';
 
 void main() {
   late FakeAuthSession session;
-  late FakeShopContext shop;
+  late TestShop shop;
   late FakeAccountRepository account;
   late FakeShopRepository shopRepo;
   late SettingsViewModel vm;
 
   setUp(() {
     session = FakeAuthSession(signedIn: person(owner: true));
-    shop = FakeShopContext(
-      const Branding(businessPhone: '98765', businessAddress: 'MG Road'),
+    shop = TestShop(
+      branding: const Branding(
+        businessPhone: '98765',
+        businessAddress: 'MG Road',
+      ),
     );
     account = FakeAccountRepository();
     shopRepo = FakeShopRepository();

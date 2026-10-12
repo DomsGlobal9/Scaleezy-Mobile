@@ -8,25 +8,9 @@ import 'package:scaleezy/features/shell/presentation/more_screen.dart';
 import 'package:scaleezy/features/transfers/presentation/transfer_screen.dart';
 import 'package:scaleezy/features/transfers/presentation/view_models/transfer_view_model.dart';
 
+import '../../support/pump.dart';
+import '../../support/roles.dart';
 import 'transfers_fakes.dart';
-
-/// A signed-in role holding exactly [perms].
-class _Role extends AuthSession {
-  _Role(this.perms) : super(offlineClient());
-  final Set<String> perms;
-
-  @override
-  bool can(String permission) => perms.contains(permission);
-}
-
-/// A shop with these stores, loaded already.
-class _Shop extends ShopContext {
-  _Shop(this._stores) : super(offlineClient());
-  final List<StockLocation> _stores;
-
-  @override
-  List<StockLocation> get locations => _stores;
-}
 
 Widget scoped(
   Widget home, {
@@ -34,9 +18,9 @@ Widget scoped(
   List<StockLocation> stores = const [],
   ThemeData? theme,
 }) => SessionScope(
-  session: _Role(perms),
+  session: TestSession.as(perms),
   child: ShopScope(
-    shop: _Shop(stores),
+    shop: TestShop(stores: stores),
     child: MaterialApp(theme: theme ?? AppTheme.light, home: home),
   ),
 );
@@ -45,9 +29,7 @@ void main() {
   testWidgets('search, add, confirm in plain words, then the result', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(800, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    setPhone(tester, width: 800, height: 1600);
     final repo = FakeTransferRepository(
       stock: (_, _) async => [stock('v1', title: 'Silk saree', quantity: 2)],
       send: () async {},
@@ -120,9 +102,7 @@ void main() {
     testWidgets('draws in ${theme.brightness.name}, list and result', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(800, 1600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      setPhone(tester, width: 800, height: 1600);
       final vm = TransferViewModel(
         repo: FakeTransferRepository(
           stock: (_, _) async => [stock('v1', title: 'Silk saree')],

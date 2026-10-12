@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -17,69 +16,21 @@ import 'package:scaleezy/features/scanner/presentation/scanner_screen.dart';
 import 'package:scaleezy/features/shell/presentation/more_screen.dart';
 
 import '../features/products/products_fakes.dart' show product;
-
-/// A session whose status and permissions the test sets.
-class _Session extends AuthSession {
-  _Session() : super(ApiClient.withDio(Dio()));
-
-  AuthStatus _status = AuthStatus.unknown;
-  Set<String> _perms = {};
-  bool onPurpose = false;
-
-  @override
-  AuthStatus get status => _status;
-
-  @override
-  bool get signedOutOnPurpose => onPurpose;
-
-  @override
-  bool can(String permission) => _perms.contains(permission);
-
-  void become(AuthStatus status, [Set<String> perms = const {}]) {
-    _status = status;
-    _perms = perms;
-    notifyListeners();
-  }
-}
+import '../support/fake_api.dart';
+import '../support/fixtures.dart';
+import '../support/roles.dart';
 
 /// The server: GET /products/p1 answers; every other call fails, so screens show their error.
-ApiClient _server() => ApiClient.withDio(
-  Dio()
-    ..interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (o, h) => o.path == '/products/p1'
-            ? h.resolve(
-                Response(
-                  requestOptions: o,
-                  statusCode: 200,
-                  data: {
-                    'success': true,
-                    'data': {
-                      'id': 'p1',
-                      'title': 'Banarasi Saree',
-                      'productCode': 'SE-p1',
-                      'category': 'WOMEN',
-                      'productType': 'UNSTITCHED',
-                      'basePrice': '1499.00',
-                      'status': 'ACTIVE',
-                      'variantSummary': {'variantCount': 2, 'totalUnits': 5},
-                    },
-                  },
-                ),
-              )
-            : h.reject(DioException(requestOptions: o, message: 'offline')),
-      ),
-    ),
-);
+FakeApi _server() => FakeApi(fallback: offline())
+  ..get('/products/p1', ok(productJson('p1', variantCount: 2, totalUnits: 5)));
 
 void main() {
-  late _Session session;
+  late TestSession session;
 
   setUp(() {
-    ApiClient.debugInstance = _server();
-    session = _Session();
+    _server().install();
+    session = TestSession(null, status: AuthStatus.unknown);
   });
-  tearDown(() => ApiClient.debugInstance = null);
 
   Future<void> pumpApp(WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
@@ -104,7 +55,7 @@ void main() {
   }
 
   Future<void> signIn(WidgetTester tester, Set<String> perms) async {
-    session.become(AuthStatus.signedIn, perms);
+    session.become(AuthStatus.signedIn, permissions: perms);
     await tester.pumpAndSettle();
   }
 
@@ -152,12 +103,10 @@ void main() {
     await signIn(tester, {'dashboard:view', 'customer:view'});
     await go(tester, '/customers');
 
-    session.onPurpose = true;
-    session.become(AuthStatus.signedOut);
+    session.become(AuthStatus.signedOut, onPurpose: true);
     await tester.pumpAndSettle();
     expect(location(tester), '/login');
 
-    session.onPurpose = false;
     await signIn(tester, {'dashboard:view', 'customer:view'});
     expect(location(tester), '/dashboard');
   });
@@ -304,5 +253,26 @@ void main() {
     // The list sits underneath.
     await back(tester);
     expect(location(tester), '/products');
+  });
+
+  testWidgets('a low-stock row on the dashboard opens its product by id', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await signIn(tester, {'dashboard:view', 'product:view'});
+    expect(location(tester), '/dashboard');
+
+    final changed = AppRoutes.productById(
+      tester.element(find.byType(HomeScreen)),
+      'p1',
+    );
+    await tester.pumpAndSettle();
+    expect(location(tester), '/products/p1');
+    expect(find.byType(ProductDetailScreen), findsOneWidget);
+    expect(find.text('Banarasi Saree'), findsWidgets);
+
+    await back(tester);
+    expect(await changed, isNull);
+    expect(location(tester), '/dashboard');
   });
 }

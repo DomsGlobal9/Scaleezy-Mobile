@@ -1,13 +1,11 @@
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:scaleezy/app/app.dart';
 import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
-import 'package:scaleezy/core/session/auth_user.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/theme/theme_mode_store.dart';
 import 'package:scaleezy/features/auth/presentation/login_screen.dart';
@@ -15,53 +13,25 @@ import 'package:scaleezy/features/settings/presentation/settings_screen.dart';
 import 'package:scaleezy/features/shell/presentation/main_navigation_screen.dart';
 import 'package:scaleezy/features/shell/presentation/more_screen.dart';
 
-/// Signed in as an owner whose shop answers nothing (every call fails, screens show errors).
-class _Session extends AuthSession {
-  _Session(this._status) : super(ApiClient.withDio(Dio()));
+import '../support/fake_api.dart';
+import '../support/roles.dart';
 
-  final AuthStatus _status;
-
-  @override
-  AuthStatus get status => _status;
-
-  @override
-  AuthUser? get user => const AuthUser(
-    id: 'u1',
-    clientId: 'shop-1',
-    name: 'Asha Rao',
-    email: 'asha@shop.in',
+/// Signed in as a store manager whose shop answers nothing (every call fails, screens show
+/// errors).
+TestSession _manager() => TestSession(
+  userWith(
+    const {'dashboard:view', 'product:view', 'customer:view'},
     roles: ['STORE_MANAGER'],
-    permissions: {'dashboard:view', 'product:view', 'customer:view'},
-  );
-
-  @override
-  bool can(String permission) => user!.can(permission);
-}
-
-ApiClient _offline() => ApiClient.withDio(
-  Dio()
-    ..interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (o, h) => h.reject(
-          DioException(
-            requestOptions: o,
-            type: DioExceptionType.connectionError,
-          ),
-        ),
-      ),
-    ),
+  ),
 );
 
 void main() {
   late Directory dir;
   setUp(() {
     dir = Directory.systemTemp.createTempSync('theme');
-    ApiClient.debugInstance = _offline();
+    FakeApi(fallback: offline()).install();
   });
-  tearDown(() {
-    ApiClient.debugInstance = null;
-    dir.deleteSync(recursive: true);
-  });
+  tearDown(() => dir.deleteSync(recursive: true));
 
   Future<ThemeModeStore> pumpApp(
     WidgetTester tester,
@@ -95,7 +65,7 @@ void main() {
   testWidgets('More → Appearance switches the whole app and saves it', (
     tester,
   ) async {
-    final store = await pumpApp(tester, _Session(AuthStatus.signedIn));
+    final store = await pumpApp(tester, _manager());
     await go(tester, '/more');
     expect(brightnessOf(tester, MoreScreen), Brightness.light);
 
@@ -121,7 +91,7 @@ void main() {
     testWidgets('shell, More, settings and sign-in build in ${mode.name}', (
       tester,
     ) async {
-      await pumpApp(tester, _Session(AuthStatus.signedIn), mode: mode);
+      await pumpApp(tester, _manager(), mode: mode);
       expect(find.byType(MainNavigationScreen), findsOneWidget);
       expect(tester.takeException(), isNull);
 
@@ -135,7 +105,7 @@ void main() {
       expect(find.text('Store Manager'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
-      await pumpApp(tester, _Session(AuthStatus.signedOut), mode: mode);
+      await pumpApp(tester, TestSession(null), mode: mode);
       expect(find.byType(LoginScreen), findsOneWidget);
       expect(brightnessOf(tester, LoginScreen).name, mode.name);
       expect(tester.takeException(), isNull);

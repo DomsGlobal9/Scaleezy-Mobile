@@ -3,7 +3,10 @@ import 'package:scaleezy/features/dashboard/data/dashboard_repository.dart';
 import 'package:scaleezy/features/inventory/data/inventory_models.dart';
 import 'package:scaleezy/features/inventory/data/inventory_repository.dart';
 
-import '../products/products_fakes.dart' show offlineClient;
+import '../../support/fake_api.dart';
+import '../../support/fixtures.dart';
+
+export '../../support/fixtures.dart' show movementJson;
 
 DashboardSummary summary({
   int totalUnits = 120,
@@ -42,24 +45,7 @@ MoneySummary money({
 
 /// One row of GET /inventory/alerts -> data.alerts.
 StockAlert alert(String id, String type, {int quantity = 1}) =>
-    StockAlert.fromJson({
-      'id': id,
-      'type': type,
-      'variantId': 'v-$id',
-      'productTitle': 'Saree $id',
-      'sku': 'SKU-$id',
-      'quantity': quantity,
-      'reorderLevel': 5,
-    });
-
-Map<String, dynamic> movementJson(String id, int quantity, DateTime at) => {
-  'id': id,
-  'type': quantity > 0 ? 'IN' : 'OUT',
-  'quantity': quantity,
-  'productTitle': 'Saree',
-  'sku': 'SKU-$id',
-  'createdAt': at.toIso8601String(),
-};
+    StockAlert.fromJson(alertJson(id, type: type, quantity: quantity));
 
 TransactionItem movement(String id, int quantity, DateTime at) =>
     TransactionItem.fromJson(movementJson(id, quantity, at));

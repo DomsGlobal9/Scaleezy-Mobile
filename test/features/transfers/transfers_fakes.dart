@@ -1,39 +1,13 @@
-import 'package:scaleezy/core/shop/shop_models.dart';
 import 'package:scaleezy/features/transfers/data/transfer_models.dart';
 import 'package:scaleezy/features/transfers/data/transfer_repository.dart';
 
 import '../scanner/scanner_fakes.dart';
 
+import '../../support/fixtures.dart';
+
+export '../../support/fixtures.dart' show stockRow;
+export '../../support/roles.dart' show store;
 export '../scanner/scanner_fakes.dart';
-
-StockLocation store(String id, {String type = 'STORE'}) => StockLocation(
-  id: id,
-  code: id,
-  name: 'Store $id',
-  type: type,
-  active: true,
-);
-
-/// A row of GET /inventory/variants as the backend builds it, for a role without cost:view.
-Map<String, Object?> stockRow(
-  String variantId, {
-  String title = 'Saree',
-  int quantity = 5,
-}) => {
-  'variantId': variantId,
-  'productId': 'p-$variantId',
-  'sku': 'SKU-$variantId',
-  'productTitle': title,
-  'category': 'WOMEN',
-  'quantity': quantity,
-  'costBasis': 'AVERAGE',
-  'costIsEstimate': false,
-  'status': 'ACTIVE',
-  'inventoryStatus': quantity > 0 ? 'HEALTHY' : 'OUT_OF_STOCK',
-  'reorderLevel': 2,
-  'lowStockThreshold': 2,
-  'updatedAt': '2026-10-01T10:00:00.000Z',
-};
 
 StoreStock stock(
   String variantId, {

@@ -31,6 +31,10 @@ abstract final class AppRoutes {
     ProductItem product,
   ) => context.push<bool>(Paths.product(product.id), extra: product);
 
+  /// A product known only by its id (a dashboard low-stock row); the route fetches it.
+  static Future<bool?> productById(BuildContext context, String productId) =>
+      context.push<bool>(Paths.product(productId));
+
   static Future<void> spot(BuildContext context, String spotId) =>
       context.push<void>(Paths.spot(spotId));
 

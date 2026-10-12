@@ -91,6 +91,9 @@ class StockAlert {
   final String id;
   final String type;
   final String variantId;
+
+  /// Null on an alert whose variant is gone; the row then opens nothing.
+  final String? productId;
   final String productTitle;
   final String sku;
   final int quantity;
@@ -100,6 +103,7 @@ class StockAlert {
     required this.id,
     required this.type,
     required this.variantId,
+    this.productId,
     required this.productTitle,
     required this.sku,
     required this.quantity,
@@ -112,6 +116,7 @@ class StockAlert {
     id: asString(j['id']),
     type: asString(j['type']),
     variantId: asString(j['variantId']),
+    productId: asOptString(j['productId']),
     productTitle: asString(j['productTitle'] ?? j['variantName']),
     sku: asString(j['sku']),
     quantity: asInt(j['quantity']),
