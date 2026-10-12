@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/contact_utils.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/suppliers/data/supplier_models.dart';
-import 'package:scaleezy/features/suppliers/data/supplier_repository.dart';
+import 'package:scaleezy/features/suppliers/presentation/view_models/suppliers_view_model.dart';
 
 class SuppliersScreen extends StatefulWidget {
-  const SuppliersScreen({super.key});
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final SuppliersViewModel? viewModel;
+
+  const SuppliersScreen({super.key, this.viewModel});
 
   @override
   State<SuppliersScreen> createState() => _SuppliersScreenState();
@@ -17,48 +19,33 @@ class SuppliersScreen extends StatefulWidget {
 
 class _SuppliersScreenState extends State<SuppliersScreen> {
   final _query = TextEditingController();
-  List<Supplier>? _all;
-  String? _error;
-  bool _showInactive = false;
+  late final SuppliersViewModel _vm = widget.viewModel ?? SuppliersViewModel();
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _vm.load();
   }
 
   @override
   void dispose() {
     _query.dispose();
+    if (widget.viewModel == null) _vm.dispose();
     super.dispose();
-  }
-
-  Future<void> _load() async {
-    setState(() => _error = null);
-    try {
-      final s = await SupplierRepository().suppliers();
-      if (mounted) setState(() => _all = s);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final q = _query.text.trim().toLowerCase();
-    final list = (_all ?? const <Supplier>[])
-        .where((s) => _showInactive || s.active)
-        .where(
-          (s) =>
-              q.isEmpty ||
-              '${s.name} ${s.code} ${s.phone ?? ''} ${s.email ?? ''}'
-                  .toLowerCase()
-                  .contains(q),
-        )
-        .toList();
-    final inactive = (_all ?? const <Supplier>[])
-        .where((s) => !s.active)
-        .length;
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
+    final list = _vm.visible;
+    final inactive = _vm.inactive;
+    final error = _vm.error;
 
     return Scaffold(
       backgroundColor: AppColors.bgLight,
@@ -67,22 +54,22 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
           children: [
             PageHeader(
               title: 'Suppliers',
-              subtitle: _all == null ? null : '${list.length} shown',
+              subtitle: _vm.all == null ? null : '${list.length} shown',
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: SearchField(
                 controller: _query,
                 hint: 'Name, code, phone',
-                onChanged: (_) => setState(() {}),
+                onChanged: _vm.search,
               ),
             ),
             if (inactive > 0)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: SwitchListTile.adaptive(
-                  value: _showInactive,
-                  onChanged: (v) => setState(() => _showInactive = v),
+                  value: _vm.showInactive,
+                  onChanged: _vm.setShowInactive,
                   activeTrackColor: AppColors.accentGold,
                   dense: true,
                   title: Text(
@@ -92,9 +79,9 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                 ),
               ),
             Expanded(
-              child: _all == null && _error != null
-                  ? ErrorView(message: _error!, onRetry: _load)
-                  : _all == null
+              child: _vm.all == null && error != null
+                  ? ErrorView(message: error, onRetry: _vm.load)
+                  : _vm.all == null
                   ? ListView(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       children: [
@@ -109,7 +96,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                   ? const ErrorView(message: 'No suppliers match.')
                   : RefreshIndicator(
                       color: AppColors.accentGold,
-                      onRefresh: _load,
+                      onRefresh: _vm.load,
                       child: ListView.builder(
                         padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
                         itemCount: list.length,
