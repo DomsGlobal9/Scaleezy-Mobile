@@ -19,8 +19,8 @@ The plan is synced to these commits. Before starting a phase, compare and update
 
 | Repo | Local branch | Synced to | Remote `main` seen | Reviewed |
 |---|---|---|---|---|
-| inventory_backend | rehan-backend `4aec9a6` | `4aec9a6` (2026-10-10) | `cbed286` (+4, 2026-10-12) | yes |
-| inventory_frontend | rehan-frontend `a445e60` | `a445e60` (2026-10-10) | `eb8e0f4` (+2, 2026-10-12) | yes |
+| inventory_backend | rehan-backend `4aec9a6` | `origin/main` `cbed286` (2026-10-12) | `cbed286` | yes |
+| inventory_frontend | rehan-frontend `a445e60` | `origin/main` `eb8e0f4` (2026-10-12) | `eb8e0f4` | yes |
 
 Reviewed upstream commits (no app work needed): backend `c40d8fe` POS till/service note,
 `3c3b369` + `0e05837` WhatsApp platform number, `cbed286` onboarding fields; frontend `f7889e3`
@@ -28,8 +28,7 @@ Platform Console WhatsApp, `eb8e0f4` onboarding form. All are desk/admin areas (
 
 Procedure:
 1. `git ls-remote origin main` (and `dev`) in both repos — read-only. Compare with the table.
-2. If new commits exist, read them (`git log` / `git show` on the commits; fetching needs the
-   owner's OK — see open decision D3) and classify each: new screen, changed flow/wording, new or
+2. `git fetch origin` in both repos (D3), read new commits (`git log` / `git show`) and classify each: new screen, changed flow/wording, new or
    changed endpoint/permission/validation, or out of scope.
 3. Update this plan: the tracker, the affected phase, `backend-api.md`, `web-parity.md`.
 4. If an already-built screen is affected, add a "resync" task to the current phase before new work.
@@ -99,11 +98,11 @@ Before new screens, prove the current ones.
 ### P3 — Returns
 - Returns list `/returns`; return detail `/returns/:id`: receive, inspect (restock/damaged/scrap per
   line), complete, reject; start a return from an order (`POST /returns`).
-- Counter return / exchange `/returns/new` — **needs D1** (it refunds money).
+- Counter return / exchange `/returns/new` stays on the website/till (D1: no money out).
 
 ### P4 — Products: add and edit
 - Add product (website `/add/*` wizard): details, sizes/colours with "You sell at"/"You pay",
-  catalogue options, camera photos via signed upload — **needs D2** (photo picker package).
+  catalogue options, camera photos via signed upload (`image_picker`, D2).
 - Edit product overview, variant prices/cost (`cost:manage`, price-impact preview), bulk variant
   update, archive/trash/restore, images (order, cover, delete), per-store settings.
 
@@ -119,7 +118,7 @@ Before new screens, prove the current ones.
 
 ### P7 — Customers in depth
 - Customer returns and orders links, groups/offers shown, loyalty points adjust (`loyalty:manage`),
-  store-credit payout — **needs D1**.
+  (no store-credit payout: D1).
 
 ### P8 — Team and settings
 - Team: invite, role change, active/suspend, reset password, view password (`team:view_password`);
@@ -129,7 +128,7 @@ Before new screens, prove the current ones.
 ### P9 — Reports and extras
 - Day book date range (≤31 days), dashboard charts (stock movement, inventory trend, supplier
   spend, dead stock), global search on Home (`/search`), offers list/detail/status toggle,
-  PDFs/printing/sharing — **needs D2**.
+  PDFs/printing/sharing (`pdf`, `printing`, `share_plus`, D2).
 
 ### P10 — Out of scope unless asked
 Campaigns, rack setup builder, shelf label printing, online shop, Razorpay, connected websites,
@@ -158,7 +157,7 @@ Status: ✅ done (definition of done) · 🟡 built, audit pending (P0) · 🟠 
 | `/orders/:id` | Order detail | 🟠 no actions | P0, P2 |
 | `/orders/:id/receipt` | Receipt | 🟡 (no PDF/print) | P0, P9 |
 | `/returns`, `/returns/:id` | — | ⬜ | P3 |
-| `/returns/new` | — | ⬜ (D1) | P3 |
+| `/returns/new` | — | ⬜ website/till only (D1) | — |
 | `/inventory` | — | ⬜ | P1 |
 | `/inventory/ledger` | — | ⬜ | P1 |
 | `/inventory/alerts` | — | ⬜ | P1 |
@@ -185,15 +184,17 @@ Status: ✅ done (definition of done) · 🟡 built, audit pending (P0) · 🟠 
 
 App-only screens kept: Scan tab, More, shelf spot, appearance.
 
-## Open decisions (owner)
+## Decisions (owner, 2026-10-12)
 
-- **D1 Money out on the phone**: counter return refunds and store-credit payouts move money. The
-  earlier decision says the app does not take money; may it pay money back?
-- **D2 New packages**: photos for add-product need an image picker (`image_picker`); PDFs,
-  printing and native share need `pdf` / `printing` / `share_plus`. Allowed?
-- **D3 Upstream fetch**: reading new upstream commits needs `git fetch` in the two repos (updates
-  only their remote-tracking refs, never their files or branches) — or the owner pulls. Which?
-- **D4 Live testing**: a test account on the deployed backend (passed at run time, never committed)
-  or a local backend with a test database, for live smoke tests and the device pass.
-- **D5 Deep links** (`inventory.scaleezy.com/orders/:id` opening the app): needs a real
-  `applicationId` (now `com.example.scaleezy`) and files on the website domain.
+- **D1 No money out on the phone**: no counter-return refunds and no store-credit payouts. Returns
+  are receive / inspect / complete / reject only; `/returns/new` (counter return) stays on the
+  website/till. P3 and P7 drop those parts.
+- **D2 Packages allowed when their phase needs them**: `image_picker` (P4 product photos),
+  `pdf` + `printing` (P9 bills/PDFs/printing), `share_plus` (P9 native share). Nothing else new
+  without asking.
+- **D3 Upstream**: `git fetch` in both repos before each phase is allowed (remote-tracking refs
+  only; their files and branches are never touched). The reference is `origin/main`; when a file
+  differs from the local checkout, read it with `git show origin/main:<path>`.
+- **D4 Live testing**: contract tests from the backend code, the fake API, and simulator/emulator
+  runs. No logging in to the deployed backend with real accounts.
+- **D5 Deep links**: still open (needs a real `applicationId` and files on the website domain).

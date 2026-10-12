@@ -58,6 +58,7 @@ WhatsApp linking, POS tills, CSV import, platform console, help center (link out
   only when it differs.
 - **Dashboard**: people with `report:financial` see the website's money tiles
   (`/reports/dashboard-summary`); everyone else keeps the basic summary counts.
+- **No money out** (D1, 2026-10-12): no counter-return refunds or store-credit payouts on the phone.
 - **Routing, look and behaviour** follow `routing.md`, `design.md` and `behaviour-parity.md`.
 
 ## Web conventions the app already matches
