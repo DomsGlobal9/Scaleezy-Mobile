@@ -33,7 +33,8 @@ class ApiClient {
 
   final Dio _dio;
 
-  /// The store the person is standing in, sent as `x-location-id`. Null = whole shop.
+  /// The store the app works in, sent as `x-location-id` (set by `ShopContext`). Null only
+  /// before a store is known; the server then uses MAIN-STORE.
   set locationId(String? id) {
     if (id == null) {
       _dio.options.headers.remove('x-location-id');
@@ -152,18 +153,29 @@ class ApiClient {
       case DioExceptionType.receiveTimeout:
       case DioExceptionType.sendTimeout:
         return const ApiException(
-          'The server is taking too long. Check the connection and try again.',
+          'The server took too long to respond. Check your connection and try again.',
         );
       case DioExceptionType.connectionError:
         return const ApiException(
-          'Cannot reach the server. Check the internet connection.',
+          'Could not reach the server. Check your connection and try again.',
         );
       default:
         return ApiException(_fallbackFor(status), statusCode: status);
     }
   }
 
+  /// The website's `describeError`: a validation answer lists what is wrong in `errors`, and
+  /// those say more than its "Validation failed".
   static String? _messageOf(Map body) {
+    final errors = body['errors'];
+    if (errors is List) {
+      final joined = errors
+          .map((e) => e is Map ? e['message'] : null)
+          .whereType<String>()
+          .where((m) => m.trim().isNotEmpty)
+          .join('; ');
+      if (joined.isNotEmpty) return joined;
+    }
     final m = body['message'] ?? body['error'];
     return m is String && m.trim().isNotEmpty ? m : null;
   }
@@ -179,7 +191,7 @@ class ApiClient {
       case 429:
         return 'Too many requests. Wait a moment and try again.';
       default:
-        return 'Something went wrong. Try again.';
+        return 'Something went wrong at our end. Please try again.';
     }
   }
 

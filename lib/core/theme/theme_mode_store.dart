@@ -35,3 +35,16 @@ class ThemeModeStore extends ValueNotifier<ThemeMode> {
     } catch (_) {}
   }
 }
+
+/// Makes the store reachable from More → Appearance: `ThemeModeScope.of(context)`.
+class ThemeModeScope extends InheritedNotifier<ThemeModeStore> {
+  const ThemeModeScope({
+    super.key,
+    required ThemeModeStore store,
+    required super.child,
+  }) : super(notifier: store);
+
+  /// Null where the app is not around (a screen pumped alone in a test).
+  static ThemeModeStore? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ThemeModeScope>()?.notifier;
+}

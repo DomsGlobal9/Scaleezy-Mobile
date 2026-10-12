@@ -40,20 +40,13 @@ class MainNavigationScreen extends StatelessWidget {
   }
 
   Widget _buildScaffold(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: navigationShell,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: AppColors.bgCard,
-          border: const Border(top: BorderSide(color: AppColors.borderLight)),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF0F172A).withValues(alpha: 0.05),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
-            ),
-          ],
+          color: c.card,
+          border: Border(top: BorderSide(color: c.border)),
         ),
         child: SafeArea(
           child: Padding(
@@ -74,7 +67,7 @@ class MainNavigationScreen extends StatelessWidget {
                   Icons.checkroom_rounded,
                   'Products',
                 ),
-                _scanItem(),
+                _scanItem(context),
                 _navItem(
                   context,
                   3,
@@ -97,7 +90,18 @@ class MainNavigationScreen extends StatelessWidget {
     );
   }
 
-  Widget _scanItem() {
+  TextStyle _label(BuildContext context, bool selected) {
+    final c = context.colors;
+    return Theme.of(context).textTheme.labelMedium!.copyWith(
+      fontSize: 11,
+      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+      color: selected ? c.text : c.textSecondary,
+    );
+  }
+
+  /// The one brand-coloured control in the bar: a brand-solid circle.
+  Widget _scanItem(BuildContext context) {
+    final c = context.colors;
     final selected = _currentIndex == _scanIndex;
     return Expanded(
       child: GestureDetector(
@@ -107,43 +111,26 @@ class MainNavigationScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             AnimatedScale(
-              scale: selected ? 1.08 : 1,
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutBack,
+              scale: selected ? 1.06 : 1,
+              duration: const Duration(milliseconds: 200),
+              curve: const Cubic(.16, 1, .3, 1),
               child: Container(
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  gradient: AppColors.goldGradient,
+                  color: c.brandSolid,
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.accentGold.withValues(
-                        alpha: selected ? 0.5 : 0.3,
-                      ),
-                      blurRadius: selected ? 18 : 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  boxShadow: c.panelShadow,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.qr_code_scanner_rounded,
-                  color: Colors.white,
+                  color: c.onBrandSolid,
                   size: 24,
                 ),
               ),
             ),
             const SizedBox(height: 3),
-            Text(
-              'Scan',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                color: selected
-                    ? AppColors.accentGold
-                    : AppColors.textSecondary,
-              ),
-            ),
+            Text('Scan', style: _label(context, selected)),
           ],
         ),
       ),
@@ -157,6 +144,7 @@ class MainNavigationScreen extends StatelessWidget {
     IconData selectedIcon,
     String label,
   ) {
+    final c = context.colors;
     final selected = _currentIndex == index;
     return Expanded(
       child: GestureDetector(
@@ -165,45 +153,30 @@ class MainNavigationScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Active is neutral, as the website's sidebar: text colour on the input colour.
             AnimatedContainer(
-              duration: const Duration(milliseconds: 280),
-              curve: Curves.easeOutCubic,
+              duration: const Duration(milliseconds: 200),
+              curve: const Cubic(.16, 1, .3, 1),
               padding: EdgeInsets.symmetric(
                 horizontal: selected ? 18 : 12,
                 vertical: 6,
               ),
               decoration: BoxDecoration(
-                color: selected
-                    ? AppColors.accentGold.withValues(alpha: 0.12)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
+                color: selected ? c.input : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                transitionBuilder: (c, a) =>
-                    ScaleTransition(scale: a, child: c),
-                child: Icon(
-                  selected ? selectedIcon : icon,
-                  key: ValueKey(selected),
-                  color: selected
-                      ? AppColors.accentGold
-                      : AppColors.textSecondary,
-                  size: 22,
-                ),
+              child: Icon(
+                selected ? selectedIcon : icon,
+                color: selected ? c.text : c.textSecondary,
+                size: 22,
               ),
             ),
             const SizedBox(height: 3),
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                color: selected
-                    ? AppColors.accentGold
-                    : AppColors.textSecondary,
-                fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
-              ),
-              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: _label(context, selected),
             ),
           ],
         ),

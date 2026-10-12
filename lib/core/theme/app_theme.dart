@@ -405,6 +405,18 @@ class AppTheme {
           ),
         ),
       ),
+      // Like the filter chips: selected is ink on the card colour, never gold.
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: SegmentedButton.styleFrom(
+          backgroundColor: p.input,
+          foregroundColor: p.textSecondary,
+          selectedBackgroundColor: p.text,
+          selectedForegroundColor: p.card,
+          side: BorderSide(color: p.border),
+          shape: radius8,
+          textStyle: text.labelLarge,
+        ),
+      ),
       tabBarTheme: TabBarThemeData(
         indicator: UnderlineTabIndicator(
           borderSide: BorderSide(color: p.brandSolid, width: 2),

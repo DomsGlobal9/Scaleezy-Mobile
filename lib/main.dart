@@ -1,36 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:scaleezy/app/app.dart';
 import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
-import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/core/theme/theme_mode_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set system UI overlay style for clean light boutique aesthetic
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: AppColors.bgCard,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
-
   final api = await ApiClient.init();
   final session = AuthSession(api);
   final shop = ShopContext(api);
-  // Branding and stores follow whoever is signed in.
-  session.addListener(() {
-    if (session.status == AuthStatus.signedIn) {
-      shop.load();
-    } else if (session.status == AuthStatus.signedOut) {
-      shop.clear();
-    }
-  });
+  final themeMode = ThemeModeStore();
+  // Before the first frame and the first request: the right colours, and the saved store
+  // already on `x-location-id`.
+  await Future.wait([themeMode.load(), shop.restoreSavedStore()]);
+
+  shop.follow(session);
   session.restore();
 
-  runApp(ScaleezyApp(session: session, shop: shop));
+  runApp(ScaleezyApp(session: session, shop: shop, themeMode: themeMode));
 }

@@ -5,8 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:scaleezy/app/app_routes.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
-import 'package:scaleezy/core/shop/shop_models.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/core/utils/labels.dart';
 import 'package:scaleezy/core/utils/money.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
@@ -83,95 +83,66 @@ class _HomeScreenState extends State<HomeScreen> {
     showModalBottomSheet(
       context: context,
       useRootNavigator: true,
-      backgroundColor: AppColors.bgCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.borderLight,
-                    borderRadius: BorderRadius.circular(2),
+      showDragHandle: true,
+      builder: (ctx) {
+        final c = ctx.colors;
+        final type = Theme.of(ctx).textTheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _Avatar(text: initials(user?.name ?? ''), size: 52),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(user?.name ?? '', style: type.titleMedium),
+                          Text(
+                            user?.email ?? '',
+                            style: type.labelMedium!.copyWith(
+                              color: c.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    if (user != null) _Tag(text: roleLabel(user)),
+                    if ((user?.clientId ?? '').isNotEmpty)
+                      _Tag(text: 'Shop: ${user!.clientId}', muted: true),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                // No confirmation, as everywhere else (and on the website).
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      session.logout();
+                    },
+                    icon: const Icon(Icons.logout_rounded, size: 18),
+                    label: const Text('Sign out'),
+                    style: OutlinedButton.styleFrom(foregroundColor: c.danger),
                   ),
                 ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  _Avatar(text: initials(user?.name ?? ''), size: 52),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          user?.name ?? '',
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          user?.email ?? '',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final r in user?.roles ?? const <String>[])
-                    _Tag(text: r),
-                  if ((user?.clientId ?? '').isNotEmpty)
-                    _Tag(text: 'Shop: ${user!.clientId}', muted: true),
-                ],
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    session.logout();
-                  },
-                  icon: const Icon(Icons.logout_rounded, size: 18),
-                  label: const Text(
-                    'Sign out',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.accentDanger,
-                    side: BorderSide(
-                      color: AppColors.accentDanger.withValues(alpha: 0.3),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -314,8 +285,12 @@ class _HomeScreenState extends State<HomeScreen> {
         .slideX(begin: -0.04, end: 0, curve: Curves.easeOutCubic);
   }
 
+  /// The one store the app works in. No "All stores": as on the website, stock in and out
+  /// always lands in a store, so the numbers here are always that store's.
   Widget _buildLocationPicker() {
     final shop = ShopScope.of(context);
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     if (shop.locations.length < 2) {
       // One store: say which, nothing to choose.
       if (shop.locations.isEmpty) return const SizedBox(height: 12);
@@ -323,70 +298,49 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
         child: Row(
           children: [
-            const Icon(
-              Icons.place_rounded,
-              size: 14,
-              color: AppColors.textMuted,
-            ),
+            Icon(Icons.place_rounded, size: 14, color: c.textMuted),
             const SizedBox(width: 4),
             Text(
               shop.locations.first.name,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
+              style: type.labelMedium!.copyWith(color: c.textSecondary),
             ),
           ],
         ),
       );
     }
 
-    final options = <StockLocation?>[null, ...shop.locations];
     return SizedBox(
       height: 56,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
-        itemCount: options.length,
+        itemCount: shop.locations.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (_, i) {
-          final loc = options[i];
-          final selected = loc?.id == shop.selectedLocation?.id;
+          final loc = shop.locations[i];
+          final selected = loc.id == shop.selectedLocation?.id;
+          final fg = selected ? c.card : c.textSecondary;
           return Pressable(
             onTap: () => shop.selectLocation(loc),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
+              duration: const Duration(milliseconds: 200),
               curve: Curves.easeOutCubic,
               padding: const EdgeInsets.symmetric(horizontal: 14),
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: selected ? AppColors.textPrimary : AppColors.bgCard,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: selected
-                      ? AppColors.textPrimary
-                      : AppColors.borderLight,
-                ),
+                color: selected ? c.text : c.input,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: selected ? c.text : c.border),
               ),
               child: Row(
                 children: [
-                  Icon(
-                    loc == null
-                        ? Icons.layers_rounded
-                        : _locationIcon(loc.type),
-                    size: 14,
-                    color: selected
-                        ? const Color(0xFFFDE68A)
-                        : AppColors.textSecondary,
-                  ),
+                  Icon(_locationIcon(loc.type), size: 14, color: fg),
                   const SizedBox(width: 6),
                   Text(
-                    loc?.name ?? 'All stores',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? Colors.white : AppColors.textSecondary,
+                    loc.name,
+                    style: type.labelMedium!.copyWith(
+                      color: fg,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                     ),
                   ),
                 ],
@@ -512,24 +466,26 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      location?.name ?? 'All stores',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                  // Absent only before the store list has loaded.
+                  if (location != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        location.name,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1184,21 +1140,21 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: AppColors.textPrimary,
+        color: tint(c.brand, 0.16),
         shape: BoxShape.circle,
-        border: Border.all(color: AppColors.accentGoldBorder, width: 2),
+        border: Border.all(color: c.border),
       ),
       alignment: Alignment.center,
       child: Text(
         text,
-        style: TextStyle(
-          color: const Color(0xFFFDE68A),
+        style: Theme.of(context).textTheme.titleMedium!.copyWith(
+          color: c.brandInk,
           fontSize: size * 0.34,
-          fontWeight: FontWeight.w900,
         ),
       ),
     );
@@ -1212,21 +1168,18 @@ class _Tag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: muted ? AppColors.bgSurface : AppColors.accentGoldLight,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: muted ? AppColors.borderLight : AppColors.accentGoldBorder,
-        ),
+        color: muted ? c.input : tint(c.brand, 0.16),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: c.border),
       ),
       child: Text(
         text,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: muted ? AppColors.textSecondary : AppColors.accentGold,
+        style: Theme.of(context).textTheme.labelMedium!.copyWith(
+          color: muted ? c.textSecondary : c.brandInk,
         ),
       ),
     );

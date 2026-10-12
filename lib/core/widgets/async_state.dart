@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/core/widgets/no_access_screen.dart';
 
 /// Three bouncing dots and an optional caps label, like the website's page loader.
 class LoadingView extends StatelessWidget {
@@ -90,16 +92,44 @@ class EmptyState extends StatelessWidget {
   }
 }
 
-/// Shows the server's message as it is. With [onRetry] it is a failed load (danger triangle,
-/// reassurance, "Try again"); without one, screens use it as a plain empty message.
+/// A load that failed, as the website's `LoadFailed`: danger triangle, "Could not load [what]."
+/// over the server's [message], the reassurance and "Try again". A 403 [error] shows
+/// [NoAccessView] instead (nothing to retry). Without [onRetry] or [what] it is a plain empty
+/// message, as older callers use it; new empty lists use [EmptyState].
 class ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback? onRetry;
-  const ErrorView({super.key, required this.message, this.onRetry});
+
+  /// What was being loaded, e.g. "customers": the heading reads "Could not load customers."
+  final String? what;
+
+  /// The failure itself; a 403 [ApiException] turns this into [NoAccessView].
+  final Object? error;
+
+  const ErrorView({
+    super.key,
+    required this.message,
+    this.onRetry,
+    this.what,
+    this.error,
+  });
+
+  /// From a caught error: its message when it is an [ApiException], the website's sentence
+  /// otherwise.
+  ErrorView.fromError(Object this.error, {super.key, this.what, this.onRetry})
+    : message = error is ApiException
+          ? error.message
+          : 'Something went wrong reaching the server.';
 
   @override
   Widget build(BuildContext context) {
-    if (onRetry == null) return EmptyState(Icons.inbox_outlined, message);
+    final failure = error;
+    if (failure is ApiException && failure.isForbidden) {
+      return NoAccessView(message: failure.message);
+    }
+    if (onRetry == null && what == null) {
+      return EmptyState(Icons.inbox_outlined, message);
+    }
     final c = context.colors;
     final type = Theme.of(context).textTheme;
     return Center(
@@ -110,19 +140,29 @@ class ErrorView extends StatelessWidget {
           children: [
             Icon(Icons.warning_amber_rounded, size: 40, color: c.danger),
             const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center, style: type.titleSmall),
+            Text(
+              what == null ? message : 'Could not load $what.',
+              textAlign: TextAlign.center,
+              style: type.titleSmall,
+            ),
+            if (what != null) ...[
+              const SizedBox(height: 6),
+              Text(message, textAlign: TextAlign.center, style: type.bodySmall),
+            ],
             const SizedBox(height: 6),
             Text(
               'This is not the same as having none — nothing has been lost.',
               textAlign: TextAlign.center,
               style: type.bodySmall,
             ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Try again'),
-            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Try again'),
+              ),
+            ],
           ],
         ),
       ),
