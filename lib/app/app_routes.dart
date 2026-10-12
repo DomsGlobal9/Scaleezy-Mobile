@@ -9,6 +9,7 @@ import 'package:scaleezy/features/shelves/presentation/shelves_screen.dart';
 import 'package:scaleezy/features/customers/presentation/customers_screen.dart';
 import 'package:scaleezy/features/purchase_orders/presentation/purchase_orders_screen.dart';
 import 'package:scaleezy/features/picking/presentation/picking_screen.dart';
+import 'package:scaleezy/features/transfers/presentation/transfer_screen.dart';
 
 /// Every push from one screen to another, typed, so a screen never builds a route itself.
 /// Switching bottom tabs stays in MainNavigationScreen.
@@ -82,4 +83,8 @@ abstract final class AppRoutes {
     context,
     PickWalkScreen(locationId: locationId, orderIds: orderIds),
   );
+
+  /// Move pieces from one store to another.
+  static Future<void> moveStock(BuildContext context) =>
+      _push<Object?>(context, const TransferScreen());
 }
