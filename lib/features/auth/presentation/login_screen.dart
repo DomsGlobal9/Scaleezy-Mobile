@@ -1,27 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/features/auth/presentation/view_models/login_view_model.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final LoginViewModel? viewModel;
+
+  const LoginScreen({super.key, this.viewModel});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  late final LoginViewModel _vm =
+      widget.viewModel ?? LoginViewModel(SessionScope.read(context));
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _busy = false;
   bool _obscure = true;
-  String? _error;
 
   @override
   void dispose() {
+    if (widget.viewModel == null) _vm.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -30,29 +34,15 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _submit({String? clientId}) async {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-
-    final session = SessionScope.of(context);
-    try {
-      await session.login(
-        _emailController.text,
-        _passwordController.text,
-        clientId: clientId,
-      );
-      // AuthGate swaps to the app when the session changes.
-    } on WorkspaceChoiceRequired catch (e) {
-      if (!mounted) return;
-      setState(() => _busy = false);
-      final picked = await _pickWorkspace(e);
-      if (picked != null) await _submit(clientId: picked);
-      return;
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    }
-    if (mounted) setState(() => _busy = false);
+    await _vm.submit(
+      _emailController.text,
+      _passwordController.text,
+      clientId: clientId,
+    );
+    final choice = _vm.workspaceChoice;
+    if (choice == null || !mounted) return;
+    final picked = await _pickWorkspace(choice);
+    if (picked != null) await _submit(clientId: picked);
   }
 
   Future<String?> _pickWorkspace(WorkspaceChoiceRequired choice) {
@@ -108,6 +98,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
+    final busy = _vm.submitting;
+    final error = _vm.error;
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
@@ -177,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               keyboardType: TextInputType.emailAddress,
                               autofillHints: const [AutofillHints.email],
                               textInputAction: TextInputAction.next,
-                              enabled: !_busy,
+                              enabled: !busy,
                               decoration: _decoration(
                                 'Email',
                                 Icons.mail_outline_rounded,
@@ -192,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               obscureText: _obscure,
                               autofillHints: const [AutofillHints.password],
                               textInputAction: TextInputAction.done,
-                              enabled: !_busy,
+                              enabled: !busy,
                               onFieldSubmitted: (_) => _submit(),
                               decoration: _decoration(
                                 'Password',
@@ -213,7 +212,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ? 'Enter your password'
                                   : null,
                             ),
-                            if (_error != null) ...[
+                            if (error != null) ...[
                               const SizedBox(height: 14),
                               Container(
                                 padding: const EdgeInsets.all(12),
@@ -227,7 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                                 child: Text(
-                                  _error!,
+                                  error,
                                   style: const TextStyle(
                                     color: AppColors.accentDanger,
                                     fontSize: 13,
@@ -238,7 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ],
                             const SizedBox(height: 20),
                             ElevatedButton(
-                              onPressed: _busy ? null : () => _submit(),
+                              onPressed: busy ? null : () => _submit(),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.accentGold,
                                 foregroundColor: Colors.white,
@@ -252,7 +251,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
-                              child: _busy
+                              child: busy
                                   ? const SizedBox(
                                       width: 20,
                                       height: 20,
@@ -269,7 +268,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     ),
                             ),
-                            if (_busy) ...[
+                            if (busy) ...[
                               const SizedBox(height: 12),
                               const Text(
                                 'The server can take a little while to answer. Hang on.',
