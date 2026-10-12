@@ -1,24 +1,46 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import '../api/api_client.dart';
+import '../api/api_repository.dart';
+import '../api/auth_session.dart';
 import '../theme/app_theme.dart';
-import '../data/mock_data.dart';
 import '../models/inventory_models.dart';
+import '../utils/money.dart';
 import '../widgets/stock_movement_dialog.dart';
+import '../widgets/ui.dart';
+import 'modules/shelves_screen.dart';
 
 class ScannerScreen extends StatefulWidget {
-  const ScannerScreen({super.key});
+  /// False while another tab is showing, so the camera is not left running behind it.
+  final bool active;
+
+  const ScannerScreen({super.key, this.active = true});
 
   @override
   State<ScannerScreen> createState() => _ScannerScreenState();
 }
 
-class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProviderStateMixin {
+class _ScannerScreenState extends State<ScannerScreen>
+    with SingleTickerProviderStateMixin {
+  final _repo = ApiRepository();
+  final _codeController = TextEditingController();
+  final MobileScannerController _camera = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+    autoStart: false,
+  );
+
   late AnimationController _animController;
   late Animation<double> _laserAnimation;
   bool _isTorchOn = false;
 
-  // Selected or active scanned variant
-  VariantItem _scannedVariant = MockData.products[0].variants[1]; // Red Anarkali Size M
-  ProductItem _scannedProduct = MockData.products[0];
+  VariantItem? _scannedVariant;
+
+  /// What was scanned this session, newest first -- tap to bring one back.
+  final List<VariantItem> _recent = [];
+  String? _lastCode;
+  bool _lookingUp = false;
+  String? _error;
 
   @override
   void initState() {
@@ -31,31 +53,157 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
     _laserAnimation = Tween<double>(begin: 0.05, end: 0.95).animate(
       CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
     );
+    if (widget.active) _startCamera();
+  }
+
+  @override
+  void didUpdateWidget(covariant ScannerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active != oldWidget.active) {
+      widget.active ? _startCamera() : _stopCamera();
+    }
   }
 
   @override
   void dispose() {
     _animController.dispose();
+    _camera.dispose();
+    _codeController.dispose();
     super.dispose();
   }
 
-  void _simulateScan(int productIndex, int variantIndex) {
-    setState(() {
-      _scannedProduct = MockData.products[productIndex];
-      _scannedVariant = _scannedProduct.variants[variantIndex];
-    });
+  Future<void> _startCamera() async {
+    try {
+      await _camera.start();
+    } catch (_) {
+      // Permission refused or no camera (emulator): the typed-code field still works.
+    }
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Matched SKU: ${_scannedVariant.sku}'),
-        backgroundColor: AppColors.textPrimary,
-        duration: const Duration(seconds: 1),
+  Future<void> _stopCamera() async {
+    try {
+      await _camera.stop();
+    } catch (_) {}
+    if (mounted) setState(() => _isTorchOn = false);
+  }
+
+  void _onDetect(BarcodeCapture capture) {
+    final code = capture.barcodes
+        .map((b) => b.rawValue)
+        .whereType<String>()
+        .firstOrNull;
+    if (code == null || code.trim().isEmpty || _lookingUp) return;
+    // Holding a tag in view keeps reporting it; one lookup per tag is enough.
+    if (code == _lastCode && _scannedVariant != null) return;
+    _lookup(code);
+  }
+
+  /// The decoded text goes to /variants/search as `q`; a barcode or SKU matches exactly.
+  Future<void> _lookup(String code) async {
+    final q = code.trim();
+    if (q.isEmpty) return;
+    setState(() {
+      _lookingUp = true;
+      _error = null;
+      _lastCode = q;
+    });
+    try {
+      final matches = await _repo.searchVariants(q, limit: 10);
+      if (!mounted) return;
+      VariantItem? picked;
+      if (matches.length == 1) {
+        picked = matches.first;
+      } else if (matches.isNotEmpty) {
+        picked = await _chooseMatch(matches);
+      }
+      if (picked != null) {
+        HapticFeedback.mediumImpact();
+      } else if (matches.isEmpty) {
+        HapticFeedback.heavyImpact();
+      }
+      setState(() {
+        _lookingUp = false;
+        if (picked != null) {
+          _scannedVariant = picked;
+          _recent
+            ..removeWhere((r) => r.id == picked!.id)
+            ..insert(0, picked);
+          if (_recent.length > 8) _recent.removeLast();
+        } else if (matches.isEmpty) {
+          _scannedVariant = null;
+          _error = 'No product matches "$q".';
+        }
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _lookingUp = false;
+        _error = e.message;
+      });
+    }
+  }
+
+  /// Typed text can match several pieces; a scanned barcode never should.
+  Future<VariantItem?> _chooseMatch(List<VariantItem> matches) {
+    return showModalBottomSheet<VariantItem>(
+      context: context,
+      backgroundColor: AppColors.bgCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Text(
+                'Which one?',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+            ),
+            ...matches.map(
+              (v) => ListTile(
+                title: Text(
+                  v.productTitle,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(
+                  [v.sku, if (v.label.isNotEmpty) v.label].join(' • '),
+                ),
+                trailing: Text(
+                  '${v.quantity} pcs',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                onTap: () => Navigator.of(ctx).pop(v),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
+  Future<void> _move(bool isStockIn) async {
+    final v = _scannedVariant;
+    if (v == null) return;
+    final done = await showStockMovement(
+      context,
+      variant: v,
+      title: '${v.productTitle} (${v.label})',
+      isStockIn: isStockIn,
+    );
+    // Read the new count back rather than doing the sum here.
+    if (done && mounted) _lookup(v.sku.isNotEmpty ? v.sku : v.barcode);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final session = SessionScope.of(context);
+    final canReceive = session.can('inventory:receive');
+    final canAdjust = session.can('inventory:adjust');
+
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
@@ -90,41 +238,78 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                       ),
                     ],
                   ),
-                  Row(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.bgCard,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.borderLight),
-                          boxShadow: AppColors.cardShadow,
-                        ),
-                        child: IconButton(
-                          icon: Icon(
-                            _isTorchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
-                            color: _isTorchOn ? AppColors.accentGold : AppColors.textSecondary,
-                            size: 20,
-                          ),
-                          onPressed: () => setState(() => _isTorchOn = !_isTorchOn),
-                        ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.bgCard,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.borderLight),
+                      boxShadow: AppColors.cardShadow,
+                    ),
+                    child: IconButton(
+                      icon: Icon(
+                        _isTorchOn
+                            ? Icons.flash_on_rounded
+                            : Icons.flash_off_rounded,
+                        color: _isTorchOn
+                            ? AppColors.accentGold
+                            : AppColors.textSecondary,
+                        size: 20,
                       ),
-                    ],
+                      onPressed: () async {
+                        try {
+                          await _camera.toggleTorch();
+                          setState(() => _isTorchOn = !_isTorchOn);
+                        } catch (_) {}
+                      },
+                    ),
                   ),
                 ],
               ),
             ),
 
-            // Demo Shortcut Test Bar
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-              child: Row(
-                children: [
-                  const Text('Simulate: ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
-                  _buildSimulateChip('Anarkali Red M', () => _simulateScan(0, 1)),
-                  _buildSimulateChip('Banarasi Saree', () => _simulateScan(1, 1)),
-                  _buildSimulateChip('Sherwani 40', () => _simulateScan(2, 1)),
-                ],
+            // Typed code, for a tag the camera cannot read (or an emulator with no camera)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: TextField(
+                controller: _codeController,
+                textInputAction: TextInputAction.search,
+                onSubmitted: _lookup,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                ),
+                decoration: InputDecoration(
+                  isDense: true,
+                  filled: true,
+                  fillColor: AppColors.bgCard,
+                  hintText: 'Or type a barcode / SKU',
+                  hintStyle: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 13,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.keyboard_rounded,
+                    color: AppColors.textSecondary,
+                    size: 20,
+                  ),
+                  suffixIcon: IconButton(
+                    icon: const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: AppColors.accentGold,
+                      size: 20,
+                    ),
+                    onPressed: () => _lookup(_codeController.text),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.borderLight),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.accentGold),
+                  ),
+                ),
               ),
             ),
 
@@ -132,7 +317,7 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
 
             // Scanner Viewfinder Area
             Expanded(
-              flex: 5,
+              flex: 4,
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 20),
                 decoration: BoxDecoration(
@@ -151,13 +336,26 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      // Camera Grid / Crosshair Reticle
-                      Container(
-                        width: 260,
-                        height: 160,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: Colors.white24, width: 2),
+                      Positioned.fill(
+                        child: MobileScanner(
+                          controller: _camera,
+                          onDetect: _onDetect,
+                          errorBuilder: (context, error) => Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                error.errorCode ==
+                                        MobileScannerErrorCode.permissionDenied
+                                    ? 'Camera access is off. Allow it in Settings, or type the code above.'
+                                    : 'The camera is not available here. Type the code above.',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
 
@@ -166,7 +364,9 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                         width: 270,
                         height: 170,
                         child: CustomPaint(
-                          painter: ScannerReticlePainter(accentColor: AppColors.accentGold),
+                          painter: ScannerReticlePainter(
+                            accentColor: AppColors.accentGold,
+                          ),
                         ),
                       ),
 
@@ -184,7 +384,9 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                                 color: const Color(0xFFFDE68A),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.accentGold.withValues(alpha: 0.9),
+                                    color: AppColors.accentGold.withValues(
+                                      alpha: 0.9,
+                                    ),
                                     blurRadius: 12,
                                     spreadRadius: 3,
                                   ),
@@ -195,11 +397,24 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                         },
                       ),
 
+                      if (_lookingUp)
+                        Container(
+                          color: Colors.black45,
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                              color: Color(0xFFFDE68A),
+                            ),
+                          ),
+                        ),
+
                       // Hint Text Banner
                       Positioned(
                         bottom: 16,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(20),
@@ -207,11 +422,19 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                           ),
                           child: const Row(
                             children: [
-                              Icon(Icons.crop_free_rounded, size: 14, color: Color(0xFFFDE68A)),
+                              Icon(
+                                Icons.crop_free_rounded,
+                                size: 14,
+                                color: Color(0xFFFDE68A),
+                              ),
                               SizedBox(width: 8),
                               Text(
                                 'Align 50x25mm garment tag inside box',
-                                style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ],
                           ),
@@ -233,8 +456,12 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
                 decoration: BoxDecoration(
                   color: AppColors.bgCard,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                  border: const Border(top: BorderSide(color: AppColors.borderLight)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
+                  border: const Border(
+                    top: BorderSide(color: AppColors.borderLight),
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: const Color(0xFF0F172A).withValues(alpha: 0.06),
@@ -243,166 +470,37 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
                     ),
                   ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.accentSuccessLight,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: AppColors.accentSuccess.withValues(alpha: 0.2)),
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.check_circle_rounded, size: 13, color: AppColors.accentSuccess),
-                              SizedBox(width: 5),
-                              Text(
-                                'SKU Match Verified',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.accentSuccess,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          'BARCODE: ${_scannedVariant.barcode}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textMuted,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                      ],
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  switchInCurve: Curves.easeOutCubic,
+                  transitionBuilder: (child, a) => FadeTransition(
+                    opacity: a,
+                    child: SlideTransition(
+                      position: Tween(
+                        begin: const Offset(0, 0.06),
+                        end: Offset.zero,
+                      ).animate(a),
+                      child: child,
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _scannedProduct.title,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textPrimary,
-                        letterSpacing: -0.4,
+                  ),
+                  child: KeyedSubtree(
+                    key: ValueKey(
+                      '${_scannedVariant?.id}-${_scannedVariant?.quantity}-$_error',
+                    ),
+                    child: LayoutBuilder(
+                      builder: (_, box) => SingleChildScrollView(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: box.maxHeight),
+                          child: IntrinsicHeight(
+                            child: _buildResult(
+                              canReceive: canReceive,
+                              canAdjust: canAdjust,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${_scannedVariant.sku} • ${_scannedVariant.colorName} • Size ${_scannedVariant.size}',
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Metrics Strip
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildMetricTile(
-                            label: 'Physical Stock',
-                            value: '${_scannedVariant.quantity}',
-                            unit: 'units',
-                            color: _scannedVariant.quantity <= 3 ? AppColors.accentDanger : AppColors.accentSuccess,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildMetricTile(
-                            label: 'Reserved Qty',
-                            value: '${_scannedVariant.reservedQty}',
-                            unit: 'units',
-                            color: AppColors.accentBlue,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildMetricTile(
-                            label: 'Unit WAC',
-                            value: '₹${_scannedVariant.averageCost.toInt()}',
-                            unit: 'cost',
-                            color: AppColors.accentGold,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const Spacer(),
-
-                    // Action Buttons Row
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            icon: const Icon(Icons.add_box_rounded, size: 18),
-                            label: const Text('Stock In'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.accentSuccess,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (_) => StockMovementDialog(
-                                  title: '${_scannedProduct.title} (${_scannedVariant.size})',
-                                  sku: _scannedVariant.sku,
-                                  currentStock: '${_scannedVariant.quantity}',
-                                  isStockIn: true,
-                                  onConfirm: (qty, reason, cost) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Received $qty units to ${_scannedVariant.sku}!'),
-                                        backgroundColor: AppColors.accentSuccess,
-                                      ),
-                                    );
-                                  },
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.indeterminate_check_box_rounded, size: 18),
-                            label: const Text('Stock Out'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.accentDanger,
-                              side: const BorderSide(color: AppColors.accentDanger),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (_) => StockMovementDialog(
-                                  title: '${_scannedProduct.title} (${_scannedVariant.size})',
-                                  sku: _scannedVariant.sku,
-                                  currentStock: '${_scannedVariant.quantity}',
-                                  isStockIn: false,
-                                  onConfirm: (qty, reason, cost) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Dispatched $qty units from ${_scannedVariant.sku}.'),
-                                        backgroundColor: AppColors.accentDanger,
-                                      ),
-                                    );
-                                  },
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -412,17 +510,275 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildSimulateChip(String label, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8),
-      child: ActionChip(
-        label: Text(label),
-        labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-        backgroundColor: AppColors.bgCard,
-        side: const BorderSide(color: AppColors.borderLight),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        onPressed: onTap,
-      ),
+  Widget _buildResult({required bool canReceive, required bool canAdjust}) {
+    final v = _scannedVariant;
+    if (v == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _error != null
+                  ? Icons.search_off_rounded
+                  : Icons.qr_code_2_rounded,
+              size: 44,
+              color: _error != null
+                  ? AppColors.accentDanger
+                  : AppColors.textMuted,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _error ?? 'Scan a garment tag to see its stock',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _error != null
+                    ? AppColors.accentDanger
+                    : AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final stockColor = v.isOutOfStock || v.isLowStock
+        ? AppColors.accentDanger
+        : AppColors.accentSuccess;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.accentSuccessLight,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: AppColors.accentSuccess.withValues(alpha: 0.2),
+                ),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    size: 13,
+                    color: AppColors.accentSuccess,
+                  ),
+                  SizedBox(width: 5),
+                  Text(
+                    'SKU Match Verified',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.accentSuccess,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (v.barcode.isNotEmpty)
+              Flexible(
+                child: Text(
+                  'BARCODE: ${v.barcode}',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textMuted,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+          ],
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            _error!,
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.accentDanger,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        Text(
+          v.productTitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+            color: AppColors.textPrimary,
+            letterSpacing: -0.4,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          [v.sku, if (v.label.isNotEmpty) v.label].join(' • '),
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Metrics Strip
+        Row(
+          children: [
+            Expanded(
+              child: _buildMetricTile(
+                label: 'Physical Stock',
+                value: '${v.quantity}',
+                unit: 'units',
+                color: stockColor,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildMetricTile(
+                label: 'Reorder At',
+                value: v.reorderLevel > 0 ? '${v.reorderLevel}' : '—',
+                unit: 'units',
+                color: AppColors.accentBlue,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: v.averageCost != null
+                  ? _buildMetricTile(
+                      label: 'Unit WAC',
+                      value: formatRupees(v.averageCost!),
+                      unit: 'cost',
+                      color: AppColors.accentGold,
+                    )
+                  : _buildMetricTile(
+                      label: 'Price',
+                      value: v.sellingPrice != null
+                          ? formatRupees(v.sellingPrice!)
+                          : '—',
+                      unit: '',
+                      color: AppColors.accentGold,
+                    ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 10),
+        if (SessionScope.of(context).can('shelf:view'))
+          Pressable(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => FindPieceScreen(
+                  initialQuery: v.sku.isNotEmpty ? v.sku : v.barcode,
+                ),
+              ),
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.accentGoldLight,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.accentGoldBorder),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.shelves, size: 16, color: AppColors.accentGold),
+                  SizedBox(width: 8),
+                  Text(
+                    'Where is it?',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.accentGold,
+                    ),
+                  ),
+                  Spacer(),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: AppColors.accentGold,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (_recent.length > 1) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final r in _recent.skip(1))
+                ActionChip(
+                  label: Text(
+                    r.sku,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  avatar: const Icon(Icons.history_rounded, size: 14),
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: AppColors.bgSurface,
+                  side: BorderSide.none,
+                  onPressed: () =>
+                      _lookup(r.sku.isNotEmpty ? r.sku : r.barcode),
+                ),
+            ],
+          ),
+        ],
+        const Spacer(),
+
+        // Action Buttons Row
+        Row(
+          children: [
+            if (canReceive)
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.add_box_rounded, size: 18),
+                  label: const Text('Receive Stock'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accentSuccess,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () => _move(true),
+                ),
+              ),
+            if (canReceive && canAdjust) const SizedBox(width: 12),
+            if (canAdjust)
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(
+                    Icons.indeterminate_check_box_rounded,
+                    size: 18,
+                  ),
+                  label: const Text('Issue Stock'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.accentDanger,
+                    side: const BorderSide(color: AppColors.accentDanger),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () => _move(false),
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -442,7 +798,14 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 4),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -450,10 +813,22 @@ class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProvider
             children: [
               Text(
                 value,
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: color, letterSpacing: -0.5),
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                  letterSpacing: -0.5,
+                ),
               ),
               const SizedBox(width: 4),
-              Text(unit, style: const TextStyle(fontSize: 10, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+              Text(
+                unit,
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ],
@@ -482,16 +857,40 @@ class ScannerReticlePainter extends CustomPainter {
     canvas.drawLine(const Offset(0, 0), const Offset(0, cornerLength), paint);
 
     // Top Right
-    canvas.drawLine(Offset(size.width, 0), Offset(size.width - cornerLength, 0), paint);
-    canvas.drawLine(Offset(size.width, 0), Offset(size.width, cornerLength), paint);
+    canvas.drawLine(
+      Offset(size.width, 0),
+      Offset(size.width - cornerLength, 0),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(size.width, 0),
+      Offset(size.width, cornerLength),
+      paint,
+    );
 
     // Bottom Left
-    canvas.drawLine(Offset(0, size.height), Offset(cornerLength, size.height), paint);
-    canvas.drawLine(Offset(0, size.height), Offset(0, size.height - cornerLength), paint);
+    canvas.drawLine(
+      Offset(0, size.height),
+      Offset(cornerLength, size.height),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(0, size.height),
+      Offset(0, size.height - cornerLength),
+      paint,
+    );
 
     // Bottom Right
-    canvas.drawLine(Offset(size.width, size.height), Offset(size.width - cornerLength, size.height), paint);
-    canvas.drawLine(Offset(size.width, size.height), Offset(size.width, size.height - cornerLength), paint);
+    canvas.drawLine(
+      Offset(size.width, size.height),
+      Offset(size.width - cornerLength, size.height),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(size.width, size.height),
+      Offset(size.width, size.height - cornerLength),
+      paint,
+    );
   }
 
   @override

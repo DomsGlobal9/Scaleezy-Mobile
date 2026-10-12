@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
   // Ultra-crisp boutique light palette
@@ -23,16 +24,16 @@ class AppColors {
   static const Color accentGoldLight = Color(0xFFFFFBEB); // Warm Gold tint
   static const Color accentGoldBorder = Color(0xFFFDE68A);
   static const Color accentGoldHover = Color(0xFFD97706);
-  
+
   static const Color accentDanger = Color(0xFFE11D48); // Rose-600
   static const Color accentDangerLight = Color(0xFFFFF1F2);
-  
+
   static const Color accentSuccess = Color(0xFF059669); // Emerald-600
   static const Color accentSuccessLight = Color(0xFFECFDF5);
-  
+
   static const Color accentBlue = Color(0xFF2563EB); // Royal Blue
   static const Color accentBlueLight = Color(0xFFEFF6FF);
-  
+
   static const Color accentWarning = Color(0xFFD97706);
   static const Color accentPurple = Color(0xFF7C3AED);
   static const Color accentPurpleLight = Color(0xFFF5F3FF);
@@ -58,35 +59,39 @@ class AppColors {
 
   // Shadows
   static const List<BoxShadow> cardShadow = [
-    BoxShadow(
-      color: Color(0x060F172A),
-      blurRadius: 10,
-      offset: Offset(0, 3),
-    ),
-    BoxShadow(
-      color: Color(0x040F172A),
-      blurRadius: 3,
-      offset: Offset(0, 1),
-    ),
+    BoxShadow(color: Color(0x060F172A), blurRadius: 10, offset: Offset(0, 3)),
+    BoxShadow(color: Color(0x040F172A), blurRadius: 3, offset: Offset(0, 1)),
   ];
 
   static const List<BoxShadow> elevatedShadow = [
-    BoxShadow(
-      color: Color(0x0E0F172A),
-      blurRadius: 20,
-      offset: Offset(0, 8),
-    ),
+    BoxShadow(color: Color(0x0E0F172A), blurRadius: 20, offset: Offset(0, 8)),
   ];
 }
 
 class AppTheme {
   static ThemeData get lightTheme {
+    final base = ThemeData(useMaterial3: true, brightness: Brightness.light);
     return ThemeData(
+      textTheme: GoogleFonts.plusJakartaSansTextTheme(base.textTheme).apply(
+        bodyColor: AppColors.textPrimary,
+        displayColor: AppColors.textPrimary,
+      ),
+      splashFactory: InkSparkle.splashFactory,
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        },
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      ),
       useMaterial3: true,
       brightness: Brightness.light,
       scaffoldBackgroundColor: AppColors.bgLight,
       primaryColor: AppColors.accentGold,
-      fontFamily: 'Roboto',
       colorScheme: const ColorScheme.light(
         primary: AppColors.accentGold,
         secondary: AppColors.accentBlue,
