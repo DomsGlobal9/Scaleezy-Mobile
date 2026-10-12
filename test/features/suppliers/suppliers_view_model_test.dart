@@ -11,16 +11,13 @@ void main() {
     supplier('3', name: 'Old Mill', active: false),
   ];
 
-  test('loads, hides inactive ones until asked, and searches', () async {
+  test('loads every supplier, inactive ones included, and searches', () async {
     final vm = SuppliersViewModel(FakeSupplierRepository(() async => all));
     expect(vm.all, isNull);
     await vm.load();
 
-    expect(vm.visible.map((s) => s.id), ['1', '2']);
-    expect(vm.inactive, 1);
-
-    vm.setShowInactive(true);
-    expect(vm.visible, hasLength(3));
+    // As the website: inactive suppliers are listed (and labelled), not hidden.
+    expect(vm.visible.map((s) => s.id), ['1', '2', '3']);
 
     vm.search(' 98000 ');
     expect(vm.visible.map((s) => s.id), ['1']);
@@ -30,14 +27,15 @@ void main() {
     expect(vm.visible, hasLength(3));
   });
 
-  test('a failed load shows the server message', () async {
+  test('a failed load keeps the failure for the screen', () async {
     final vm = SuppliersViewModel(
       FakeSupplierRepository(
-        () async => throw const ApiException('No access.'),
+        () async => throw const ApiException('No access.', statusCode: 403),
       ),
     );
     await vm.load();
     expect(vm.error, 'No access.');
+    expect(vm.failure!.isForbidden, isTrue);
     expect(vm.all, isNull);
   });
 }

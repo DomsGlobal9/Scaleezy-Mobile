@@ -23,6 +23,7 @@ class FakeCustomerRepository extends CustomerRepository {
     this.saveAnswer,
     this.points,
     this.credit,
+    this.byPhone,
   }) : super(offlineClient());
 
   Future<List<Customer>> Function(String? search)? list;
@@ -32,6 +33,7 @@ class FakeCustomerRepository extends CustomerRepository {
   /// Unset: the call fails, as with no permission.
   Future<CustomerPoints> Function(String id)? points;
   Future<StoreCredit> Function(String id)? credit;
+  Future<Customer?> Function(String phone)? byPhone;
   final searches = <String?>[];
   final saves = <Map<String, Object?>>[];
 
@@ -51,6 +53,10 @@ class FakeCustomerRepository extends CustomerRepository {
   @override
   Future<StoreCredit> storeCredit(String id) =>
       credit?.call(id) ?? Future.error(_forbidden);
+
+  @override
+  Future<Customer?> customerByPhone(String phone) =>
+      byPhone?.call(phone) ?? Future.value(null);
 
   static const _forbidden = ApiException(
     'Seeing customers is not part of your role.',

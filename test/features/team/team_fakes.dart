@@ -16,7 +16,7 @@ TeamMember member(
   name: name,
   email: '$id@shop.in',
   status: status,
-  roles: const ['Staff'],
+  roles: const ['STORE_MANAGER'],
   lastActiveAt: lastActiveAt,
 );
 

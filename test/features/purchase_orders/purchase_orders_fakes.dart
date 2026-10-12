@@ -19,21 +19,24 @@ PurchaseOrderSummary summary(
   '_count': {'items': 1},
 });
 
-PurchaseOrderDetail detail({List<Map<String, Object?>>? items}) =>
-    PurchaseOrderDetail.fromJson({
-      'id': 'po1',
-      'poNumber': 'PO-7',
-      'status': 'PARTIALLY_RECEIVED',
-      'createdAt': '2026-09-01T00:00:00Z',
-      'supplier': {'name': 'Weavers Co'},
-      'items':
-          items ??
-          [
-            line('i1', ordered: 10, received: 4),
-            line('i2', ordered: 3, received: 0),
-            line('i3', ordered: 2, received: 2),
-          ],
-    });
+PurchaseOrderDetail detail({
+  List<Map<String, Object?>>? items,
+  Map<String, Object?>? location,
+}) => PurchaseOrderDetail.fromJson({
+  'id': 'po1',
+  'poNumber': 'PO-7',
+  'status': 'PARTIALLY_RECEIVED',
+  'createdAt': '2026-09-01T00:00:00Z',
+  'supplier': {'name': 'Weavers Co'},
+  'location': ?location,
+  'items':
+      items ??
+      [
+        line('i1', ordered: 10, received: 4),
+        line('i2', ordered: 3, received: 0),
+        line('i3', ordered: 2, received: 2),
+      ],
+});
 
 Map<String, Object?> line(
   String id, {
@@ -56,7 +59,7 @@ class FakePurchaseOrderRepository extends PurchaseOrderRepository {
 
   Future<List<PurchaseOrderSummary>> Function()? list;
   Future<PurchaseOrderDetail> Function()? one;
-  Future<void> Function()? receive;
+  Future<({String? receiptNumber, bool duplicate})> Function()? receive;
   final loaded = <String>[];
   final receipts = <Map<String, Object?>>[];
 
@@ -70,10 +73,11 @@ class FakePurchaseOrderRepository extends PurchaseOrderRepository {
   }
 
   @override
-  Future<void> receivePurchaseOrder(
+  Future<({String? receiptNumber, bool duplicate})> receivePurchaseOrder(
     String id, {
     required Map<String, int> quantities,
     required String receivedByName,
+    String? locationId,
     String? supplierReference,
     String? notes,
     required String requestKey,
@@ -82,6 +86,7 @@ class FakePurchaseOrderRepository extends PurchaseOrderRepository {
       'id': id,
       'quantities': Map.of(quantities),
       'receivedByName': receivedByName,
+      'locationId': locationId,
       'supplierReference': supplierReference,
       'requestKey': requestKey,
     });

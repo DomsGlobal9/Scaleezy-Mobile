@@ -14,7 +14,7 @@ class CustomersViewModel extends ViewModel {
 
   String _query = '';
   List<Customer>? _customers;
-  String? _error;
+  ApiException? _failure;
   int _requestId = 0;
   Timer? _debounce;
 
@@ -22,11 +22,14 @@ class CustomersViewModel extends ViewModel {
 
   /// Null until the first load arrives.
   List<Customer>? get customers => _customers;
-  String? get error => _error;
+  String? get error => _failure?.message;
+
+  /// The last failed load, kept whole so a 403 shows as no access.
+  ApiException? get failure => _failure;
 
   Future<void> load() async {
     final id = ++_requestId;
-    _error = null;
+    _failure = null;
     notifyListeners();
     try {
       final list = await _repo.customers(search: _query);
@@ -35,17 +38,17 @@ class CustomersViewModel extends ViewModel {
       _customers = list;
     } on ApiException catch (e) {
       if (disposed || id != _requestId) return;
-      _error = e.message;
+      _failure = e;
     }
     notifyListeners();
   }
 
-  /// Typing searches once the person pauses.
+  /// Typing searches once the person pauses (300 ms, as the website).
   void search(String text) {
-    _query = text;
+    _query = text.trim();
     notifyListeners();
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), load);
+    _debounce = Timer(const Duration(milliseconds: 300), load);
   }
 
   @override
