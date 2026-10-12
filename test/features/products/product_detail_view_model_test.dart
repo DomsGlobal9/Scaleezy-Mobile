@@ -79,7 +79,7 @@ void main() {
       inventory: FakeInventoryRepository(),
     );
     await vm.load();
-    expect(vm.error, 'Not found.');
+    expect(vm.error?.message, 'Not found.');
     expect(vm.variants, isNull);
   });
 }

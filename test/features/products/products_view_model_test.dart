@@ -98,8 +98,44 @@ void main() {
       await vm.loadMore();
 
       expect(vm.products.map((p) => p.id), ['a']);
-      expect(vm.error, 'The server is busy.');
+      expect(vm.error?.message, 'The server is busy.');
       expect(vm.loading, isFalse);
     },
   );
+
+  test('categories come from the catalogue, else the built-in list', () async {
+    final offline = ProductsViewModel(FakeProductRepository());
+    await offline.loadCategories();
+    expect(offline.categories.map((c) => c.label), [
+      'All',
+      'Women',
+      'Men',
+      'Kids',
+      'Unisex',
+    ]);
+
+    final vm = ProductsViewModel(
+      FakeProductRepository(
+        categories: () async => [
+          (value: 'WOMEN', label: 'Women'),
+          (value: 'BRIDAL', label: 'Bridal wear'),
+        ],
+      ),
+    );
+    await vm.loadCategories();
+    expect(vm.categories.map((c) => c.value), ['ALL', 'WOMEN', 'BRIDAL']);
+    expect(vm.categoryLabel('BRIDAL'), 'Bridal wear');
+    expect(vm.categoryLabel('KIDS_WEAR'), 'Kids wear');
+  });
+
+  test('a refused load keeps the error whole, for "no access"', () async {
+    final vm = ProductsViewModel(
+      FakeProductRepository(
+        answer: (_) async =>
+            throw const ApiException('Not allowed.', statusCode: 403),
+      ),
+    );
+    await vm.reload();
+    expect(vm.error?.isForbidden, isTrue);
+  });
 }

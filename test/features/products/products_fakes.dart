@@ -36,6 +36,8 @@ VariantItem variant(
   String size = 'M',
   int quantity = 5,
   int reorderLevel = 0,
+  Object? costPrice,
+  Object? averageCost,
 }) => VariantItem.fromJson({
   'id': id,
   'sku': 'SKU-$id',
@@ -44,14 +46,20 @@ VariantItem variant(
   'colorName': colour,
   'reorderLevel': reorderLevel,
   'totalQuantity': quantity,
+  'costPrice': ?costPrice,
+  'averageCost': ?averageCost,
 });
 
 /// Records each getProducts call and answers with [answer].
 class FakeProductRepository extends ProductRepository {
-  FakeProductRepository({this.answer, this.variants}) : super(offlineClient());
+  FakeProductRepository({this.answer, this.variants, this.categories})
+    : super(offlineClient());
 
   Future<Paged<ProductItem>> Function(int page)? answer;
   Future<List<VariantItem>> Function()? variants;
+
+  /// Unset: the catalogue call fails, as when offline.
+  Future<List<CatalogOption>> Function()? categories;
   final calls = <Map<String, Object?>>[];
 
   @override
@@ -77,6 +85,11 @@ class FakeProductRepository extends ProductRepository {
 
   @override
   Future<List<VariantItem>> getProductVariants(String productId) => variants!();
+
+  @override
+  Future<List<CatalogOption>> getCategories() =>
+      categories?.call() ??
+      Future.error(const ApiException('Could not reach the server.'));
 }
 
 class FakeInventoryRepository extends InventoryRepository {
