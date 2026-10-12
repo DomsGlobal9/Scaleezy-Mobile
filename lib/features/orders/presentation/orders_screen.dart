@@ -1,16 +1,14 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/money.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/orders/data/order_models.dart';
-import 'package:scaleezy/features/orders/data/order_repository.dart';
+import 'package:scaleezy/features/orders/presentation/view_models/order_details_view_model.dart';
+import 'package:scaleezy/features/orders/presentation/view_models/orders_view_model.dart';
 
 (Color, Color) orderStatusColours(String status) => switch (status) {
   'CONFIRMED' => (AppColors.accentBlue, AppColors.accentBlueLight),
@@ -40,33 +38,19 @@ Widget orderStatusChip(String status) {
 }
 
 class OrdersScreen extends StatefulWidget {
-  const OrdersScreen({super.key});
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final OrdersViewModel? viewModel;
+
+  const OrdersScreen({super.key, this.viewModel});
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
 
 class _OrdersScreenState extends State<OrdersScreen> {
-  final _repo = OrderRepository();
+  late final OrdersViewModel _vm = widget.viewModel ?? OrdersViewModel();
   final _query = TextEditingController();
   final _time = DateFormat('h:mm a');
-  final _day = DateFormat('EEE, d MMM');
-  Timer? _debounce;
-
-  static const _statuses = [
-    'ALL',
-    'DRAFT',
-    'CONFIRMED',
-    'PARTIALLY_DISPATCHED',
-    'DISPATCHED',
-    'CANCELLED',
-  ];
-  String _status = 'ALL';
-  bool _counterOnly = false;
-
-  List<OrderItemSummary>? _orders;
-  String? _error;
-  int _req = 0;
   int _seenRevision = -1;
 
   @override
@@ -75,66 +59,29 @@ class _OrdersScreenState extends State<OrdersScreen> {
     final revision = ShopScope.of(context).revision;
     if (revision != _seenRevision) {
       _seenRevision = revision;
-      _load();
+      _vm.load();
     }
   }
 
   @override
   void dispose() {
-    _debounce?.cancel();
+    if (widget.viewModel == null) _vm.dispose();
     _query.dispose();
     super.dispose();
   }
 
-  /// Every status comes back at once so each chip can show its count; the chip filters locally.
-  Future<void> _load() async {
-    final id = ++_req;
-    setState(() => _error = null);
-    try {
-      final orders = await _repo.getOrders(search: _query.text.trim());
-      if (mounted && id == _req) setState(() => _orders = orders);
-    } on ApiException catch (e) {
-      if (mounted && id == _req) setState(() => _error = e.message);
-    }
-  }
-
-  String _dayLabel(DateTime d) {
-    final today = DateUtils.dateOnly(DateTime.now());
-    final day = DateUtils.dateOnly(d);
-    if (day == today) return 'Today';
-    if (day == today.subtract(const Duration(days: 1))) return 'Yesterday';
-    return _day.format(d);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final all = (_orders ?? const <OrderItemSummary>[])
-        .where((o) => !_counterOnly || o.atCounter)
-        .toList();
-    final shown = all
-        .where((o) => _status == 'ALL' || o.status == _status)
-        .toList();
-    final value = shown
-        .where((o) => o.status != 'CANCELLED')
-        .fold<double>(0, (a, o) => a + o.totalAmount);
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
 
-    // Day headers between the cards.
-    final rows = <Object>[];
-    String? lastDay;
-    for (final o in shown) {
-      final label = _dayLabel(o.date);
-      if (label != lastDay) {
-        final dayOrders = shown.where(
-          (x) => _dayLabel(x.date) == label && x.status != 'CANCELLED',
-        );
-        rows.add((
-          label,
-          dayOrders.fold<double>(0, (a, x) => a + x.totalAmount),
-        ));
-        lastDay = label;
-      }
-      rows.add(o);
-    }
+  Widget _buildScreen() {
+    final shown = _vm.shown;
+    final value = _vm.value;
+    final rows = _vm.rows;
 
     return Scaffold(
       backgroundColor: AppColors.bgLight,
@@ -160,7 +107,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 250),
                           child: Text(
-                            _orders == null
+                            _vm.orders == null
                                 ? 'Loading…'
                                 : '${shown.length} orders • ${formatRupees(value)}',
                             key: ValueKey('${shown.length}-$value'),
@@ -176,12 +123,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   ),
                   FilterChip(
                     label: const Text('Counter'),
-                    selected: _counterOnly,
-                    onSelected: (v) => setState(() => _counterOnly = v),
+                    selected: _vm.counterOnly,
+                    onSelected: _vm.setCounterOnly,
                     selectedColor: AppColors.accentGoldLight,
                     checkmarkColor: AppColors.accentGold,
                     side: BorderSide(
-                      color: _counterOnly
+                      color: _vm.counterOnly
                           ? AppColors.accentGoldBorder
                           : AppColors.borderLight,
                     ),
@@ -198,11 +145,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
               child: SearchField(
                 controller: _query,
                 hint: 'Order no., customer name or phone',
-                onChanged: (_) {
-                  setState(() {});
-                  _debounce?.cancel();
-                  _debounce = Timer(const Duration(milliseconds: 450), _load);
-                },
+                onChanged: _vm.search,
               ),
             ),
             SizedBox(
@@ -210,16 +153,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: _statuses.length,
+                itemCount: OrdersViewModel.statuses.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 8),
                 itemBuilder: (_, i) {
-                  final s = _statuses[i];
-                  final sel = s == _status;
-                  final count = s == 'ALL'
-                      ? all.length
-                      : all.where((o) => o.status == s).length;
+                  final s = OrdersViewModel.statuses[i];
+                  final sel = s == _vm.status;
+                  final count = _vm.countFor(s);
                   return Pressable(
-                    onTap: () => setState(() => _status = s),
+                    onTap: () => _vm.selectStatus(s),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 220),
                       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -277,9 +218,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: _orders == null && _error != null
-                  ? ErrorView(message: _error!, onRetry: _load)
-                  : _orders == null
+              child: _vm.orders == null && _vm.error != null
+                  ? ErrorView(message: _vm.error!, onRetry: _vm.load)
+                  : _vm.orders == null
                   ? ListView(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       children: [
@@ -292,13 +233,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     )
                   : shown.isEmpty
                   ? ErrorView(
-                      message: _query.text.isNotEmpty
-                          ? 'No orders match "${_query.text}".'
+                      message: _vm.query.isNotEmpty
+                          ? 'No orders match "${_vm.query}".'
                           : 'No orders here.',
                     )
                   : RefreshIndicator(
                       color: AppColors.accentGold,
-                      onRefresh: _load,
+                      onRefresh: _vm.load,
                       child: ListView.builder(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
@@ -355,7 +296,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     final cancelled = o.status == 'CANCELLED';
     return SurfaceCard(
       padding: const EdgeInsets.all(14),
-      onTap: () => showOrderDetails(context, _repo, o),
+      onTap: () => showOrderDetails(context, _vm.details(o)),
       child: Row(
         children: [
           Container(
@@ -438,12 +379,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 }
 
-void showOrderDetails(
-  BuildContext context,
-  OrderRepository repo,
-  OrderItemSummary order,
-) {
-  final detail = repo.getOrder(order.id);
+/// Shows one order in a sheet, loading it now; the sheet disposes [viewModel] when it closes.
+void showOrderDetails(BuildContext context, OrderDetailsViewModel viewModel) {
+  viewModel.load();
   final dateFormat = DateFormat('d MMM yyyy, h:mm a');
   showModalBottomSheet(
     context: context,
@@ -457,14 +395,16 @@ void showOrderDetails(
       minChildSize: 0.4,
       maxChildSize: 0.95,
       expand: false,
-      builder: (_, scroll) => FutureBuilder<OrderDetail>(
-        future: detail,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
+      builder: (_, scroll) => ListenableBuilder(
+        listenable: viewModel,
+        builder: (context, _) {
+          if (viewModel.error != null) {
+            return ErrorView(message: viewModel.error!);
+          }
+          final d = viewModel.detail;
+          if (d == null) {
             return const LoadingView(message: 'Loading the order…');
           }
-          if (snap.hasError) return ErrorView(message: snap.error.toString());
-          final d = snap.data!;
           Widget total(String label, double amount, {bool bold = false}) =>
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 3),
@@ -601,5 +541,5 @@ void showOrderDetails(
         },
       ),
     ),
-  );
+  ).whenComplete(viewModel.dispose);
 }

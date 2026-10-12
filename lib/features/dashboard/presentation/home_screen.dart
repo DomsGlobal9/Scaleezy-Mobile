@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/shop/shop_models.dart';
@@ -11,48 +10,27 @@ import 'package:scaleezy/core/utils/money.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/dashboard/data/dashboard_models.dart';
-import 'package:scaleezy/features/dashboard/data/dashboard_repository.dart';
+import 'package:scaleezy/features/dashboard/presentation/view_models/home_view_model.dart';
 import 'package:scaleezy/features/inventory/data/inventory_models.dart';
-import 'package:scaleezy/features/inventory/data/inventory_repository.dart';
 import 'package:scaleezy/features/inventory/presentation/widgets/stock_movement_dialog.dart';
-import 'package:scaleezy/features/orders/data/order_models.dart';
-import 'package:scaleezy/features/orders/data/order_repository.dart';
 import 'package:scaleezy/features/products/data/product_models.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(int tabIndex)? onNavigateTab;
 
-  const HomeScreen({super.key, this.onNavigateTab});
+  /// Tests pass their own; otherwise the screen makes and owns one.
+  final HomeViewModel? viewModel;
+
+  const HomeScreen({super.key, this.onNavigateTab, this.viewModel});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-/// What the home screen shows, all of it read from the server in one go.
-class _HomeData {
-  final DashboardSummary summary;
-  final List<VariantItem> lowStock;
-
-  /// Null when the role cannot see stock movements.
-  final List<TransactionItem>? movements;
-
-  /// Null when the role cannot see orders.
-  final List<OrderItemSummary>? orders;
-
-  const _HomeData(this.summary, this.lowStock, this.movements, this.orders);
-}
-
 class _HomeScreenState extends State<HomeScreen> {
-  final _dashboardRepo = DashboardRepository();
-  final _inventoryRepo = InventoryRepository();
-  final _orderRepo = OrderRepository();
+  late final HomeViewModel _vm = widget.viewModel ?? HomeViewModel();
   final _count = NumberFormat.decimalPattern('en_IN');
-
-  _HomeData? _data;
-  String? _error;
   int _seenRevision = -1;
-
-  static const _movementSample = 200;
 
   @override
   void didChangeDependencies() {
@@ -65,60 +43,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _load() async {
-    setState(() => _error = null);
-    final session = SessionScope.read(context);
-    Future<T?> optional<T>(bool allowed, Future<T> Function() call) => allowed
-        ? call().then<T?>((v) => v).catchError((Object e) {
-            debugPrint('Home: optional section skipped: $e');
-            return null;
-          })
-        : Future.value(null);
-
-    try {
-      final results = await Future.wait<Object?>([
-        _dashboardRepo.getDashboardSummary(),
-        optional(
-          session.can('inventory:view'),
-          () => _inventoryRepo.getLowStockVariants(limit: 6),
-        ),
-        optional(
-          session.can('inventory:view'),
-          () => _inventoryRepo.getTransactions(limit: _movementSample),
-        ),
-        optional(session.can('sales_order:view'), () => _orderRepo.getOrders()),
-      ]);
-      if (!mounted) return;
-      setState(
-        () => _data = _HomeData(
-          results[0] as DashboardSummary,
-          (results[1] as List<VariantItem>?) ?? const [],
-          results[2] as List<TransactionItem>?,
-          results[3] as List<OrderItemSummary>?,
-        ),
-      );
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    }
+  @override
+  void dispose() {
+    if (widget.viewModel == null) _vm.dispose();
+    super.dispose();
   }
 
-  // ---- Derived from real data -----------------------------------------------------------------
-
-  List<DayFlow> _lastSevenDays(List<TransactionItem> movements) {
-    final today = DateUtils.dateOnly(DateTime.now());
-    return List.generate(7, (i) {
-      final day = today.subtract(Duration(days: 6 - i));
-      var inQty = 0, outQty = 0;
-      for (final m in movements) {
-        if (!DateUtils.isSameDay(m.timestamp, day)) continue;
-        if (m.quantity > 0) {
-          inQty += m.quantity;
-        } else {
-          outQty += -m.quantity;
-        }
-      }
-      return DayFlow(day, inQty, outQty);
-    });
+  Future<void> _load() {
+    final session = SessionScope.read(context);
+    return _vm.load(
+      canViewInventory: session.can('inventory:view'),
+      canViewOrders: session.can('sales_order:view'),
+    );
   }
 
   String _greeting() {
@@ -251,7 +187,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final data = _data;
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _buildScreen(),
+    );
+  }
+
+  Widget _buildScreen() {
+    final data = _vm.data;
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
@@ -267,10 +210,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 sliver: SliverToBoxAdapter(child: _buildHeader()),
               ),
               SliverToBoxAdapter(child: _buildLocationPicker()),
-              if (data == null && _error != null)
+              if (data == null && _vm.error != null)
                 SliverFillRemaining(
                   hasScrollBody: false,
-                  child: ErrorView(message: _error!, onRetry: _load),
+                  child: ErrorView(message: _vm.error!, onRetry: _load),
                 )
               else if (data == null)
                 SliverPadding(
@@ -459,14 +402,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _ => Icons.storefront_rounded,
   };
 
-  List<Widget> _buildContent(_HomeData d) {
+  List<Widget> _buildContent(HomeData d) {
     var i = 0;
-    final movements = d.movements ?? d.summary.recentTransactions;
+    final movements = _vm.recentMovements;
     return [
       _buildHero(d).entrance(i++),
       if (d.orders != null) ...[
         const SizedBox(height: 14),
-        _buildToday(d.orders!).entrance(i++),
+        _buildToday().entrance(i++),
       ],
       const SizedBox(height: 22),
       _buildQuickActions().entrance(i++),
@@ -507,18 +450,14 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
   }
 
-  Widget _buildHero(_HomeData d) {
+  Widget _buildHero(HomeData d) {
     final s = d.summary;
-    final flow = d.movements == null ? null : _lastSevenDays(d.movements!);
-    final totalIn = flow?.fold<int>(0, (a, f) => a + f.inQty) ?? 0;
-    final totalOut = flow?.fold<int>(0, (a, f) => a + f.outQty) ?? 0;
-    // Only 200 movements come back; if even those are all from this week, the chart is partial.
-    final truncated =
-        d.movements != null &&
-        d.movements!.length >= _movementSample &&
-        d.movements!.last.timestamp.isAfter(
-          DateTime.now().subtract(const Duration(days: 7)),
-        );
+    final flow = _vm.lastSevenDays
+        ?.map((f) => DayFlow(f.day, f.inQty, f.outQty))
+        .toList();
+    final totalIn = _vm.flowIn;
+    final totalOut = _vm.flowOut;
+    final truncated = _vm.flowTruncated;
     final location = ShopScope.of(context).selectedLocation;
 
     return Container(
@@ -715,17 +654,11 @@ class _HomeScreenState extends State<HomeScreen> {
     ],
   );
 
-  Widget _buildToday(List<OrderItemSummary> orders) {
-    final today = orders
-        .where(
-          (o) =>
-              DateUtils.isSameDay(o.date, DateTime.now()) &&
-              o.status != 'CANCELLED',
-        )
-        .toList();
-    final takings = today.fold<double>(0, (a, o) => a + o.totalAmount);
-    final pieces = today.fold<int>(0, (a, o) => a + o.itemCount);
-    final drafts = orders.where((o) => o.status == 'DRAFT').length;
+  Widget _buildToday() {
+    final today = _vm.todayOrders;
+    final takings = _vm.todayTakings;
+    final pieces = _vm.todayPieces;
+    final drafts = _vm.drafts;
 
     return Pressable(
       onTap: () => widget.onNavigateTab?.call(3),
