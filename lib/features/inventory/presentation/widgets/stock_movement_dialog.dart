@@ -286,7 +286,7 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
             if (_vm.isStockIn) ...[
               const SizedBox(height: 14),
               const Text(
-                'Unit Purchase Cost (₹) for WAC valuation',
+                'What you paid per piece (₹)',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,

@@ -70,8 +70,8 @@ void main() {
     vm
       ..quantity = '2'
       ..cost = 'abc';
-    expect(await vm.save(), 'That purchase cost is not a number.');
-    expect(vm.error, 'That purchase cost is not a number.');
+    expect(await vm.save(), 'What you paid is not a number.');
+    expect(vm.error, 'What you paid is not a number.');
     expect(repo.calls, isEmpty);
     expect(vm.busy, isFalse);
   });

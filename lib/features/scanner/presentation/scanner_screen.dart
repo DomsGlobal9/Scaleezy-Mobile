@@ -622,13 +622,13 @@ class _ScannerScreenState extends State<ScannerScreen>
             Expanded(
               child: v.averageCost != null
                   ? _buildMetricTile(
-                      label: 'Unit WAC',
+                      label: 'You pay',
                       value: formatRupees(v.averageCost!),
-                      unit: 'cost',
+                      unit: 'per piece',
                       color: AppColors.accentGold,
                     )
                   : _buildMetricTile(
-                      label: 'Price',
+                      label: 'You sell at',
                       value: v.sellingPrice != null
                           ? formatRupees(v.sellingPrice!)
                           : '—',

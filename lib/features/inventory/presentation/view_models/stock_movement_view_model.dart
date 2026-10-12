@@ -62,7 +62,7 @@ class StockMovementViewModel extends ViewModel {
     final costText = cost.trim();
     final unitCost = costText.isEmpty ? null : double.tryParse(costText);
     if (costText.isNotEmpty && unitCost == null) {
-      return _fail('That purchase cost is not a number.');
+      return _fail('What you paid is not a number.');
     }
 
     _busy = true;
