@@ -64,7 +64,7 @@ A screen is done when all of this holds, and the tracker row says so:
 
 ### P0 — Verification foundation and audit of what exists
 Before new screens, prove the current ones.
-- **P0.1 Test kit** (`test/support/`): one fake API (Dio adapter) serving fixtures shaped from the
+- **P0.1 Test kit** (`test/support/`, done; see its README): one fake API (Dio adapter) serving fixtures shaped from the
   backend code; helpers to answer each failure kind (401/403/404/409/400-with-errors/429/500/
   timeout/offline/malformed JSON); session and shop fakes with the five role permission sets.
   Replace the per-feature duplicated fakes with it.
@@ -76,7 +76,7 @@ Before new screens, prove the current ones.
   row against the website and backend, fix every mismatch found.
 - **P0.4 Device pass** on simulator/emulator for every existing screen; live smoke only with a test
   account or local backend (D4).
-- **P0.5 Loose ends from earlier merges**: `ApiException` keeps the raw error body (so 409
+- **P0.5 Loose ends from earlier merges** (done, except tiles → filtered lists, which waits for P1): `ApiException` keeps the raw error body (so 409
   "existing customer" needs no extra lookup); product detail reachable by id from dashboard
   low-stock rows; dashboard tiles open filtered lists once those screens exist; `KpiCard` use.
 

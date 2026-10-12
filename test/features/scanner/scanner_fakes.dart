@@ -1,10 +1,9 @@
-import 'package:dio/dio.dart';
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/features/products/data/product_models.dart';
 import 'package:scaleezy/features/products/data/product_repository.dart';
 
-/// A client that is never called: the fake below answers instead.
-ApiClient offlineClient() => ApiClient.withDio(Dio());
+import '../../support/fake_api.dart';
+
+export '../../support/fake_api.dart' show offlineClient;
 
 VariantItem piece(String id, {String title = 'Saree', int quantity = 5}) =>
     VariantItem.fromJson({

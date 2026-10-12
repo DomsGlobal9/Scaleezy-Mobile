@@ -69,7 +69,7 @@ Rules:
   - The view model lives in `presentation/view_models/<screen>_view_model.dart` and extends `ViewModel` (`core/view_model/view_model.dart`, a `ChangeNotifier` that ignores notifications after dispose). It owns all loading, paging, filters and request guards, takes its repositories as optional constructor arguments, and never imports Flutter widgets.
   - The screen keeps only UI: controllers, dialogs, sheets and navigation. It takes an optional `viewModel` (tests pass one; otherwise it creates and disposes its own), rebuilds through `ListenableBuilder`, and imports no repository or `ApiClient`.
   - Purely visual state (an expanded card, a draft inside a filter sheet) stays in the widget.
-  - Tests: `test/features/<feature>/` holds view model unit tests with fake repositories (subclass the repository and pass `ApiClient.withDio(Dio())`; see `products_fakes.dart`) plus one widget test that pumps the screen with a view model built on those fakes.
+  - Tests: `test/features/<feature>/` holds view model unit tests with fake repositories (subclass the repository and pass `offlineClient()`; see `products_fakes.dart`) plus one widget test that pumps the screen with a view model built on those fakes. The shared kit in `test/support/` (read its README) has the fake API (`FakeApi`, a Dio adapter with every backend failure shape), payload fixtures, the five role permission sets with `TestSession`/`TestShop`, and `pumpScreen`/`pumpApp`/`testLooks`.
 
 ## Architecture
 

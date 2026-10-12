@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
+
+import '../../support/fake_api.dart';
+import '../../support/roles.dart';
 
 Map<String, dynamic> _store(String id, {String? code, bool active = true}) => {
   'id': id,
@@ -17,55 +20,29 @@ Map<String, dynamic> _store(String id, {String? code, bool active = true}) => {
 /// Answers /locations with [stores] and /branding with nothing; records the store header of
 /// every request.
 class _Server {
-  _Server(this.stores);
+  _Server(this.stores) {
+    fake
+      ..get('/locations', (FakeRequest _) => stores)
+      ..get('/branding', ok({}))
+      ..get('/anything', ok(null));
+  }
 
   List<Map<String, dynamic>> stores;
-  final headers = <String?>[];
-
-  late final api = ApiClient.withDio(
-    Dio()
-      ..interceptors.add(
-        InterceptorsWrapper(
-          onRequest: (o, h) {
-            headers.add(o.headers['x-location-id'] as String?);
-            h.resolve(
-              Response(
-                requestOptions: o,
-                statusCode: 200,
-                data: o.path == '/locations'
-                    ? stores
-                    : {'success': true, 'data': {}},
-              ),
-            );
-          },
-        ),
-      ),
-  );
+  final fake = FakeApi();
+  ApiClient get api => fake.client;
+  List<String?> get headers => [for (final r in fake.requests) r.locationId];
 }
 
-class _Session extends AuthSession {
-  _Session() : super(ApiClient.withDio(Dio()));
-
-  AuthStatus _status = AuthStatus.unknown;
-  bool onPurpose = false;
-
-  @override
-  AuthStatus get status => _status;
-
-  @override
-  bool get signedOutOnPurpose => onPurpose;
-
-  void become(AuthStatus status) {
-    _status = status;
-    notifyListeners();
+/// Completes on [shop]'s next change (a load landing), the real event rather than a delay.
+Future<void> nextChange(ShopContext shop) {
+  final done = Completer<void>();
+  void changed() {
+    shop.removeListener(changed);
+    done.complete();
   }
-}
 
-/// Lets the store's file writes and a reload finish.
-// Lets the fake server answer, then waits for the store file itself, not a guessed delay.
-Future<void> settle(ShopContext shop) async {
-  await Future<void>.delayed(const Duration(milliseconds: 50));
-  await shop.pendingSave;
+  shop.addListener(changed);
+  return done.future;
 }
 
 void main() {
@@ -110,7 +87,7 @@ void main() {
     expect(shop.locations.map((l) => l.id), ['L1', 'L2']);
     await server.api.get('/anything');
     expect(server.headers.last, 'L2');
-    await settle(shop);
+    await shop.pendingSave;
     expect(saved().readAsStringSync(), 'L2');
   });
 
@@ -131,7 +108,7 @@ void main() {
     expect(shop.revision, revision + 1);
     shop.selectLocation(shop.locations.last);
     expect(shop.revision, revision + 1);
-    await settle(shop);
+    await shop.pendingSave;
     expect(saved().readAsStringSync(), 'L2');
 
     // A new start picks it up again.
@@ -146,13 +123,14 @@ void main() {
     () async {
       final server = _Server([_store('L1', code: 'MAIN-STORE'), _store('L2')]);
       final shop = shopOn(server);
-      final session = _Session();
+      final session = TestSession(null, status: AuthStatus.unknown);
       shop.follow(session);
 
+      var loaded = nextChange(shop);
       session.become(AuthStatus.signedIn);
-      await settle(shop);
+      await loaded;
       shop.selectLocation(shop.locations.last);
-      await settle(shop);
+      await shop.pendingSave;
 
       session.become(AuthStatus.signedOut); // expired
       expect(shop.selectedLocation, isNull);
@@ -160,13 +138,13 @@ void main() {
       expect(server.headers.last, 'L2');
       expect(saved().existsSync(), isTrue);
 
+      loaded = nextChange(shop);
       session.become(AuthStatus.signedIn);
-      await settle(shop);
+      await loaded;
       expect(shop.selectedLocation?.id, 'L2');
 
-      session.onPurpose = true;
-      session.become(AuthStatus.signedOut);
-      await settle(shop);
+      session.become(AuthStatus.signedOut, onPurpose: true);
+      await shop.pendingSave;
       await server.api.get('/anything');
       expect(server.headers.last, isNull);
       expect(saved().existsSync(), isFalse);

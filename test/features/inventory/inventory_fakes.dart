@@ -1,10 +1,11 @@
-import 'package:dio/dio.dart';
 import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/features/inventory/data/inventory_repository.dart';
 
+import '../../support/fake_api.dart';
+
 /// Records stock in / out calls; [fail] makes them throw.
 class FakeInventoryRepository extends InventoryRepository {
-  FakeInventoryRepository() : super(ApiClient.withDio(Dio()));
+  FakeInventoryRepository() : super(offlineClient());
 
   ApiException? fail;
   final calls = <Map<String, Object?>>[];

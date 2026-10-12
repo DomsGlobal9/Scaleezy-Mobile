@@ -1,10 +1,9 @@
-import 'package:dio/dio.dart';
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/features/team/data/team_models.dart';
 import 'package:scaleezy/features/team/data/team_repository.dart';
 
-/// A client that is never called: the fake below answers instead.
-ApiClient offlineClient() => ApiClient.withDio(Dio());
+import '../../support/fake_api.dart';
+
+export '../../support/fake_api.dart' show offlineClient;
 
 TeamMember member(
   String id, {

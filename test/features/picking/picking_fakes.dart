@@ -1,20 +1,10 @@
-import 'package:dio/dio.dart';
-import 'package:scaleezy/core/network/api_client.dart';
-import 'package:scaleezy/core/session/auth_session.dart';
-import 'package:scaleezy/core/shop/shop_models.dart';
 import 'package:scaleezy/features/picking/data/picking_models.dart';
 import 'package:scaleezy/features/picking/data/picking_repository.dart';
 
-/// A client that is never called: the fakes below answer instead.
-ApiClient offlineClient() => ApiClient.withDio(Dio());
+import '../../support/fake_api.dart';
 
-StockLocation store(String id, {String type = 'STORE'}) => StockLocation(
-  id: id,
-  code: id,
-  name: 'Store $id',
-  type: type,
-  active: true,
-);
+export '../../support/fake_api.dart' show offlineClient;
+export '../../support/roles.dart' show store;
 
 PickOrder order(String id, {int pieces = 2, String status = 'CONFIRMED'}) =>
     PickOrder(
@@ -112,14 +102,4 @@ class FakePickingRepository extends PickingRepository {
     });
     return send!(salesOrderId);
   }
-}
-
-/// Signed in with exactly [permissions].
-class FakeSession extends AuthSession {
-  FakeSession(this.permissions) : super(offlineClient());
-
-  final Set<String> permissions;
-
-  @override
-  bool can(String permission) => permissions.contains(permission);
 }

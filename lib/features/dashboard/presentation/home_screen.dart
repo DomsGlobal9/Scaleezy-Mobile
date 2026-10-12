@@ -145,6 +145,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (done) _load();
   }
 
+  /// The website's LowStockWidget opens the product the alert is about.
+  Future<void> _openProduct(String productId) async {
+    final changed = await AppRoutes.productById(context, productId);
+    // Null after a swipe back, when nobody knows: reload unless it said nothing changed.
+    if (changed != false && mounted) _load();
+  }
+
   // ---- Build -------------------------------------------------------------------------------
 
   @override
@@ -522,7 +529,8 @@ class _HomeScreenState extends State<HomeScreen> {
       stockStates,
       out ? 'OUT_OF_STOCK' : 'LOW_STOCK',
     );
-    return Container(
+    final productId = a.productId;
+    final row = Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -578,6 +586,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+    return productId == null
+        ? row
+        : Pressable(onTap: () => _openProduct(productId), child: row);
   }
 
   /// The website's recent-activity row.

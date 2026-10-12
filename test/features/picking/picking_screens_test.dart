@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
+
+import '../../support/pump.dart';
+import '../../support/roles.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/features/picking/presentation/picking_screen.dart';
 import 'package:scaleezy/features/picking/presentation/view_models/pick_orders_view_model.dart';
@@ -14,19 +17,16 @@ import 'picking_fakes.dart';
 
 Widget scoped(Widget home, {Set<String> can = const {}, ThemeData? theme}) =>
     SessionScope(
-      session: FakeSession(can),
+      session: TestSession.as(can),
       child: ShopScope(
         // The app's selected store is L1.
-        shop: ShopContext(offlineClient())..selectLocation(store('L1')),
+        shop: TestShop(stores: [store('L1')]),
         child: MaterialApp(theme: theme ?? AppTheme.light, home: home),
       ),
     );
 
-void tallScreen(WidgetTester tester) {
-  tester.view.physicalSize = const Size(400, 1600);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-}
+void tallScreen(WidgetTester tester) =>
+    setPhone(tester, width: 400, height: 1600);
 
 void main() {
   testWidgets('orders screen lists the orders and chooses them', (

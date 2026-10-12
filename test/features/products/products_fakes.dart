@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:scaleezy/core/models/paged.dart';
 import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/features/inventory/data/inventory_models.dart';
@@ -6,8 +5,9 @@ import 'package:scaleezy/features/inventory/data/inventory_repository.dart';
 import 'package:scaleezy/features/products/data/product_models.dart';
 import 'package:scaleezy/features/products/data/product_repository.dart';
 
-/// A client that is never called: the fakes below answer instead.
-ApiClient offlineClient() => ApiClient.withDio(Dio());
+import '../../support/fake_api.dart';
+
+export '../../support/fake_api.dart' show offlineClient;
 
 ProductItem product(
   String id, {

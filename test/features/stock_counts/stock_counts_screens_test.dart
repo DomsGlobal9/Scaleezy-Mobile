@@ -9,6 +9,8 @@ import 'package:scaleezy/features/stock_counts/presentation/stock_counts_screen.
 import 'package:scaleezy/features/stock_counts/presentation/view_models/stock_count_view_model.dart';
 import 'package:scaleezy/features/stock_counts/presentation/view_models/stock_counts_view_model.dart';
 
+import '../../support/roles.dart';
+
 import '../auth/auth_fakes.dart';
 import 'stock_counts_fakes.dart';
 
@@ -24,9 +26,9 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       SessionScope(
-        session: FakeSession(person(owner: owner)),
+        session: TestSession(person(owner: owner)),
         child: ShopScope(
-          shop: FakeShopContext([store('L1'), store('L2')]),
+          shop: TestShop(stores: [store('L1'), store('L2')]),
           child: MaterialApp(theme: theme ?? AppTheme.light, home: home),
         ),
       ),

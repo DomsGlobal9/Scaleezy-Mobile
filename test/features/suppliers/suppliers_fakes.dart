@@ -1,10 +1,9 @@
-import 'package:dio/dio.dart';
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/features/suppliers/data/supplier_models.dart';
 import 'package:scaleezy/features/suppliers/data/supplier_repository.dart';
 
-/// A client that is never called: the fake below answers instead.
-ApiClient offlineClient() => ApiClient.withDio(Dio());
+import '../../support/fake_api.dart';
+
+export '../../support/fake_api.dart' show offlineClient;
 
 Supplier supplier(
   String id, {

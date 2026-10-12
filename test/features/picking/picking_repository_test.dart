@@ -1,22 +1,14 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/features/picking/data/picking_models.dart';
 import 'package:scaleezy/features/picking/data/picking_repository.dart';
 
-/// A repository whose server answers [reply] and remembers each request.
-(PickingRepository, List<RequestOptions>) repoAnswering(Object? reply) {
-  final seen = <RequestOptions>[];
-  final dio = Dio()
-    ..interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (o, h) {
-          seen.add(o);
-          h.resolve(Response(requestOptions: o, statusCode: 200, data: reply));
-        },
-      ),
-    );
-  return (PickingRepository(ApiClient.withDio(dio)), seen);
+import '../../support/fake_api.dart';
+import '../../support/fixtures.dart';
+
+/// A repository whose server answers [reply] to everything, and the server.
+(PickingRepository, FakeApi) repoAnswering(Object? reply) {
+  final api = FakeApi(fallback: reply);
+  return (PickingRepository(api.client), api);
 }
 
 void main() {
@@ -35,8 +27,7 @@ void main() {
       final orders = await repo.pickOrders('L1');
 
       expect(orders.single.orderNumber, 'SO-1');
-      expect(seen.single.path, '/shelves/pick/orders');
-      expect(seen.single.queryParameters, {'locationId': 'L1'});
+      expect(seen.log, ['GET /shelves/pick/orders?locationId=L1']);
     },
   );
 
@@ -47,8 +38,8 @@ void main() {
     });
     await repo.pickList('L1', ['so1', 'so2']);
 
-    expect(seen.single.path, '/shelves/pick/list');
-    expect(seen.single.queryParameters, {
+    expect(seen.requests.single.path, '/shelves/pick/list');
+    expect(seen.requests.single.query, {
       'locationId': 'L1',
       'orderIds': 'so1,so2',
     });
@@ -57,10 +48,7 @@ void main() {
   test(
     'reports not found and dispatches with the bodies the server checks',
     () async {
-      final (repo, seen) = repoAnswering({
-        'id': 'd1',
-        'dispatchNumber': 'DSP-1',
-      });
+      final (repo, seen) = repoAnswering(dispatchJson());
       await repo.reportNotFound(spotId: 'sp1', variantId: 'v1', missing: 2);
       await repo.dispatch('so1', [
         const DispatchLine(
@@ -70,16 +58,13 @@ void main() {
         ),
       ]);
 
-      expect(seen.map((o) => (o.method, o.path)), [
-        ('POST', '/shelves/not-found'),
-        ('POST', '/dispatches'),
-      ]);
-      expect(seen.first.data, {
+      expect(seen.log, ['POST /shelves/not-found', 'POST /dispatches']);
+      expect(seen.requests.first.body, {
         'spotId': 'sp1',
         'variantId': 'v1',
         'missing': 2,
       });
-      expect(seen.last.data, {
+      expect(seen.requests.last.body, {
         'salesOrderId': 'so1',
         'items': [
           {

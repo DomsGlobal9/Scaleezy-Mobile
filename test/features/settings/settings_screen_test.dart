@@ -7,6 +7,7 @@ import 'package:scaleezy/features/settings/presentation/settings_screen.dart';
 import 'package:scaleezy/features/settings/presentation/view_models/settings_view_model.dart';
 
 import '../auth/auth_fakes.dart';
+import '../../support/roles.dart';
 import 'settings_fakes.dart';
 
 void main() {
@@ -21,7 +22,9 @@ void main() {
     account = FakeAccountRepository();
     shopRepo = FakeShopRepository();
     final session = FakeAuthSession(signedIn: person(owner: owner));
-    final shop = FakeShopContext(const Branding(businessName: 'Asha Sarees'));
+    final shop = TestShop(
+      branding: const Branding(businessName: 'Asha Sarees'),
+    );
     final vm = SettingsViewModel(
       session,
       shop,

@@ -19,7 +19,11 @@ class ApiException implements Exception {
   final String message;
   final Map<String, dynamic>? details;
 
-  const ApiException(this.message, {this.statusCode, this.details});
+  /// The whole decoded error body, for answers that carry more than `message` at the top
+  /// level (a 409 naming `existingCustomerId`). Null when the answer was not a JSON object.
+  final Map<String, dynamic>? body;
+
+  const ApiException(this.message, {this.statusCode, this.details, this.body});
 
   bool get isUnauthorized => statusCode == 401;
   bool get isForbidden => statusCode == 403;
@@ -125,6 +129,7 @@ class ApiClient {
         throw ApiException(
           _messageOf(body) ?? 'That did not work.',
           statusCode: res.statusCode,
+          body: Map<String, dynamic>.from(body),
         );
       }
       return body;
@@ -145,6 +150,7 @@ class ApiClient {
         _messageOf(body) ?? _fallbackFor(status),
         statusCode: status,
         details: details is Map<String, dynamic> ? details : null,
+        body: Map<String, dynamic>.from(body),
       );
     }
 

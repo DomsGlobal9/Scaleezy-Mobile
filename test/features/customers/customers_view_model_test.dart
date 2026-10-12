@@ -7,6 +7,7 @@ import 'package:scaleezy/features/customers/presentation/view_models/customer_de
 import 'package:scaleezy/features/customers/presentation/view_models/customer_form_view_model.dart';
 import 'package:scaleezy/features/customers/presentation/view_models/customers_view_model.dart';
 
+import '../../support/fixtures.dart';
 import 'customers_fakes.dart';
 
 void main() {
@@ -219,13 +220,15 @@ void main() {
     test('a number someone already has offers to open them', () async {
       final asked = <String>[];
       final repo = FakeCustomerRepository(
-        saveAnswer: () async => throw const ApiException(
-          'Priya Sharma (CUS-000041) is already saved with that number.',
+        saveAnswer: () async => throw ApiException(
+          'Priya Sharma (CUS-p1) is already saved with that number.',
           statusCode: 409,
+          // customer.controller.ts `taken`: who has it, at the top level.
+          body: phoneTakenFields('p1'),
         ),
         byPhone: (phone) async {
           asked.add(phone);
-          return customer('p1', name: 'Priya Sharma');
+          return null;
         },
       );
       final vm = CustomerFormViewModel(null, repo);
@@ -237,10 +240,62 @@ void main() {
       );
 
       expect(error, contains('already saved with that number'));
-      expect(asked, ['+919848022338']);
-      expect(vm.taken!.name, 'Priya Sharma');
+      expect(asked, isEmpty); // named in the answer: no lookup
+      expect(
+        (vm.taken!.id, vm.taken!.name, vm.taken!.code),
+        ('p1', 'Priya Sharma', 'CUS-p1'),
+      );
       expect(vm.busy, isFalse);
     });
+
+    test('the holder in details (PHONE_TAKEN) is read too', () async {
+      final repo = FakeCustomerRepository(
+        saveAnswer: () async => throw ApiException(
+          'Priya Sharma (CUS-p1) is already saved with that number.',
+          statusCode: 409,
+          details: {'code': 'PHONE_TAKEN', ...phoneTakenFields('p1')},
+        ),
+      );
+      final vm = CustomerFormViewModel(null, repo);
+      await vm.save(name: 'Ravi', phone: '9848022338', email: '');
+      expect(vm.taken!.id, 'p1');
+    });
+
+    test('a 409 that names nobody looks the number up', () async {
+      final asked = <String>[];
+      final repo = FakeCustomerRepository(
+        saveAnswer: () async => throw const ApiException(
+          'Priya Sharma (CUS-000041) is already saved with that number.',
+          statusCode: 409,
+        ),
+        byPhone: (phone) async {
+          asked.add(phone);
+          return customer('p1', name: 'Priya Sharma');
+        },
+      );
+      final vm = CustomerFormViewModel(null, repo);
+
+      await vm.save(name: 'Ravi', phone: '+91 98480 22338', email: '');
+
+      expect(asked, ['+919848022338']);
+      expect(vm.taken!.name, 'Priya Sharma');
+    });
+
+    test(
+      'editing a customer is never told they hold their own number',
+      () async {
+        final repo = FakeCustomerRepository(
+          saveAnswer: () async => throw ApiException(
+            'Asha Rao (CUS-c1) is already saved with that number.',
+            statusCode: 409,
+            body: phoneTakenFields('c1', name: 'Asha Rao'),
+          ),
+        );
+        final vm = CustomerFormViewModel(customer('c1'), repo);
+        await vm.save(name: 'Asha', phone: '9848022338', email: '');
+        expect(vm.taken, isNull);
+      },
+    );
 
     test('an existing customer is updated', () async {
       final repo = FakeCustomerRepository(

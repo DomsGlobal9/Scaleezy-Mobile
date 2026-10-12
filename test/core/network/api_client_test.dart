@@ -1,26 +1,13 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scaleezy/core/network/api_client.dart';
 
-/// A client whose every call fails as [fail] says.
-ApiClient failing(DioException Function(RequestOptions o) fail) =>
-    ApiClient.withDio(
-      Dio()
-        ..interceptors.add(
-          InterceptorsWrapper(onRequest: (o, h) => h.reject(fail(o))),
-        ),
-    );
+import '../../support/fake_api.dart';
 
-DioException answered(RequestOptions o, int status, Object body) =>
-    DioException(
-      requestOptions: o,
-      type: DioExceptionType.badResponse,
-      response: Response(requestOptions: o, statusCode: status, data: body),
-    );
-
-Future<ApiException> errorOf(ApiClient api) async {
+/// The error a GET /x answered with [answer] becomes.
+Future<ApiException> errorOf(Object answer) async {
+  final api = FakeApi()..get('/x', answer);
   try {
-    await api.get('/x');
+    await api.client.get('/x');
   } on ApiException catch (e) {
     return e;
   }
@@ -32,14 +19,9 @@ void main() {
     'a validation answer lists what is wrong, as the website does',
     () async {
       final e = await errorOf(
-        failing(
-          (o) => answered(o, 400, {
-            'message': 'Validation failed',
-            'errors': [
-              {'path': 'phone', 'message': 'Phone must be 10 digits'},
-              {'path': 'name', 'message': 'Name is required'},
-            ],
-          }),
+        validationFailed(
+          ['Phone must be 10 digits', 'Name is required'],
+          paths: ['phone', 'name'],
         ),
       );
       expect(e.message, 'Phone must be 10 digits; Name is required');
@@ -49,45 +31,44 @@ void main() {
 
   test('an empty errors list falls back to the message', () async {
     final e = await errorOf(
-      failing(
-        (o) => answered(o, 409, {'message': 'Already taken.', 'errors': []}),
-      ),
+      const FakeAnswer(409, {'message': 'Already taken.', 'errors': []}),
     );
     expect(e.message, 'Already taken.');
   });
 
-  test('connection failures read as the website words them', () async {
-    final slow = await errorOf(
-      failing(
-        (o) => DioException(
-          requestOptions: o,
-          type: DioExceptionType.receiveTimeout,
-        ),
+  test('the whole error body is kept for fields beyond the message', () async {
+    final e = await errorOf(
+      conflict(
+        'Priya Sharma (CUS-000041) is already saved with that number.',
+        fields: {
+          'existingCustomerId': 'c41',
+          'existingCustomerName': 'Priya Sharma',
+        },
       ),
     );
+    expect(e.body!['existingCustomerId'], 'c41');
+    expect(e.body!['existingCustomerName'], 'Priya Sharma');
+
+    final unsuccessful = await errorOf(
+      ok(null)..addAll({'success': false, 'message': 'Not allowed here.'}),
+    );
+    expect(unsuccessful.message, 'Not allowed here.');
+    expect(unsuccessful.body!['success'], isFalse);
+  });
+
+  test('connection failures read as the website words them', () async {
     expect(
-      slow.message,
+      (await errorOf(timeout())).message,
       'The server took too long to respond. Check your connection and try again.',
     );
-
-    final offline = await errorOf(
-      failing(
-        (o) => DioException(
-          requestOptions: o,
-          type: DioExceptionType.connectionError,
-        ),
-      ),
-    );
     expect(
-      offline.message,
+      (await errorOf(offline())).message,
       'Could not reach the server. Check your connection and try again.',
     );
-
-    final broken = await errorOf(
-      failing((o) => answered(o, 502, '<html>Bad gateway</html>')),
-    );
     expect(
-      broken.message,
+      (await errorOf(
+        const FakeAnswer.raw(502, '<html>Bad gateway</html>'),
+      )).message,
       'Something went wrong at our end. Please try again.',
     );
   });

@@ -13,29 +13,24 @@ import 'package:scaleezy/features/shelves/presentation/view_models/shelves_view_
 import 'package:scaleezy/features/shelves/presentation/view_models/spot_view_model.dart';
 import 'package:scaleezy/features/shelves/presentation/view_models/waiting_to_shelve_view_model.dart';
 
+import '../../support/pump.dart';
+import '../../support/roles.dart';
 import 'shelves_fakes.dart';
 
 /// A shop whose selected store is [at] (none when null).
-ShopContext shopAt(StockLocation? at) {
-  final shop = ShopContext(offlineClient());
-  if (at != null) shop.selectLocation(at);
-  return shop;
-}
+ShopContext shopAt(StockLocation? at) => TestShop(stores: [?at]);
 
 Widget scoped(Widget home, {ShopContext? shop, ThemeData? theme}) =>
     SessionScope(
-      session: AuthSession(offlineClient()),
+      session: TestSession(null),
       child: ShopScope(
         shop: shop ?? shopAt(store('L1')),
         child: MaterialApp(theme: theme ?? AppTheme.light, home: home),
       ),
     );
 
-void tallScreen(WidgetTester tester) {
-  tester.view.physicalSize = const Size(800, 2000);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-}
+void tallScreen(WidgetTester tester) =>
+    setPhone(tester, width: 800, height: 2000);
 
 WhereItem whereItem() => WhereItem(
   item: item('v1', title: 'Banarasi'),
