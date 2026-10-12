@@ -505,9 +505,9 @@ class _VariantCardState extends State<_VariantCard> {
             runSpacing: 4,
             children: [
               if (v.sellingPrice != null)
-                _meta('Price', formatRupees(v.sellingPrice!)),
+                _meta('You sell at', formatRupees(v.sellingPrice!)),
               if (v.averageCost != null)
-                _meta('Avg cost', formatRupees(v.averageCost!)),
+                _meta('You pay', formatRupees(v.averageCost!)),
               if (v.reservedQty > 0)
                 _meta('Held for orders', '${v.reservedQty}'),
               if (v.reorderLevel > 0) _meta('Reorder at', '${v.reorderLevel}'),
