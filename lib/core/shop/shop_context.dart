@@ -94,7 +94,12 @@ class ShopContext extends ChangeNotifier {
     _save(id);
   }
 
-  Future<void> _save(String? id) async {
+  Future<void> _saving = Future.value();
+
+  // Saves run one after another, so a quick second switch can't be overwritten by the first.
+  Future<void> _save(String? id) => _saving = _saving.then((_) => _write(id));
+
+  Future<void> _write(String? id) async {
     try {
       final file = await _file;
       if (id == null) {
