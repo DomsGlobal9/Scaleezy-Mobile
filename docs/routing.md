@@ -40,10 +40,10 @@ landing order is the web's without `/inventory` and `/returns` (no such screens)
 | `/more` | MoreScreen | — | More |
 | `/shelves` | ShelvesScreen | shelf:view | More |
 | `/shelves/pick` | PickOrdersScreen (extra StockLocation, else the selected store) | shelf:putaway | More |
-| `/shelves/pick/walk?location=&orders=` | PickWalkScreen (→ bool) | shelf:putaway | root |
-| `/shelves/find?q=&location=` | FindPieceScreen (app-only) | shelf:view | root |
+| `/shelves/pick/walk?orders=` | PickWalkScreen (→ bool; the selected store) | shelf:putaway | root |
+| `/shelves/find?q=` | FindPieceScreen (app-only; selected store, "Look in every location" toggle) | shelf:view | root |
 | `/shelves/spots/:spotId` | SpotScreen (app-only) | shelf:view | root |
-| `/shelves/put-away?location=&spot=` | WaitingToShelveScreen (extra SpotContents, else fetched; store name from the shop) | shelf:putaway | root |
+| `/shelves/put-away?spot=&location=` (location optional: a transfer destination or another store's piece; else the selected store) | WaitingToShelveScreen (extra SpotContents, else fetched; store name from the shop) | shelf:putaway | root |
 | `/inventory/audits` | StockCountsScreen | stock_count:view | More |
 | `/inventory/audits/:id` | StockCountScreen | stock_count:view | More |
 | `/inventory/purchase-orders?filter=` | PurchaseOrdersScreen | purchase_order:view | More |

@@ -2,65 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Deprecated, light-only colours kept so screens compile while they move to `context.colors`.
-///
-/// Every value is the website's LIGHT token (see docs/design.md), so unmigrated screens already
-/// look like the site in light mode, but none of them follow dark mode. `accentGold` is the
-/// brand-solid green because nearly all of its uses mean "primary"; real gold highlights belong
-/// to `context.colors.gold`. New code uses `context.colors` and the theme's text styles.
-class AppColors {
-  static const Color bgLight = Color(0xFFFAFAFA);
-  static const Color bgDark = Color(0xFFFAFAFA);
-  static const Color bgCard = Color(0xFFFFFFFF);
-  static const Color bgSurface = Color(0xFFF4F4F5);
-  static const Color bgInput = Color(0xFFF4F4F5);
-  static const Color bgHover = Color(0xFFF4F4F5);
-
-  static const Color borderLight = Color(0x0F000000);
-  static const Color borderFocus = Color(0x26000000);
-
-  static const Color textPrimary = Color(0xFF18181B);
-  static const Color textSecondary = Color(0xFF71717A);
-  static const Color textMuted = Color(0xFF757580);
-
-  static const Color accentGold = Color(0xFF164B1E);
-  static const Color accentGoldLight = Color(0x1F164B1E);
-  static const Color accentGoldBorder = Color(0x40164B1E);
-  static const Color accentGoldHover = Color(0xFFA6D92B);
-
-  static const Color accentDanger = Color(0xFFB91C1C);
-  static const Color accentDangerLight = Color(0x1FB91C1C);
-
-  static const Color accentSuccess = Color(0xFF047857);
-  static const Color accentSuccessLight = Color(0x1F047857);
-
-  static const Color accentBlue = Color(0xFF1D4ED8);
-  static const Color accentBlueLight = Color(0x1F1D4ED8);
-
-  static const Color accentWarning = Color(0xFFB45309);
-  static const Color accentPurple = Color(0xFF6D28D9);
-  static const Color accentPurpleLight = Color(0x1F6D28D9);
-
-  // Flat on purpose: the website has no gradients. Kept as gradients so call sites compile.
-  static const LinearGradient heroGradient = LinearGradient(
-    colors: [Color(0xFF164B1E), Color(0xFF164B1E)],
-  );
-  static const LinearGradient goldGradient = heroGradient;
-  static const LinearGradient cardGlowGradient = LinearGradient(
-    colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF)],
-  );
-
-  static const List<BoxShadow> cardShadow = [
-    BoxShadow(
-      color: Color(0x0F000000),
-      blurRadius: 24,
-      spreadRadius: -4,
-      offset: Offset(0, 4),
-    ),
-  ];
-  static const List<BoxShadow> elevatedShadow = cardShadow;
-}
-
 /// The colour a status or alert is drawn in. Pills use the tone for text and [tint] for fill.
 enum Tone { neutral, info, warning, gold, success, danger, purple }
 

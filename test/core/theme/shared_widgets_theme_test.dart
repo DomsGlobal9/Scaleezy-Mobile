@@ -43,14 +43,14 @@ void main() {
                 const Skeleton(height: 20),
                 const NetImage(url: null, width: 60, height: 60),
                 QuantityStepper(value: 0, max: 3, onChanged: (_) {}),
-                const SizedBox(
+                SizedBox(
                   height: 120,
                   child: KpiCard(
                     title: 'Sales today',
                     value: '₹12,400',
                     icon: Icons.payments,
-                    accentColor: AppColors.accentSuccess,
-                    bgColor: AppColors.accentSuccessLight,
+                    accentColor: AppPalette.light.success,
+                    bgColor: tint(AppPalette.light.success),
                     subtitle: '+4 orders',
                   ),
                 ),
