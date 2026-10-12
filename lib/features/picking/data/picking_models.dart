@@ -75,12 +75,12 @@ class PickItem {
     this.imageUrl,
   });
 
-  /// "Red • Size M • SKU-1"
+  /// "Red · Size M · SKU-1", as the website's `itemDetail`.
   String get detail => [
     ?colorName,
     if (size != null) size == 'Free' ? size! : 'Size $size',
     sku,
-  ].join(' • ');
+  ].join(' · ');
 
   /// A scanned or typed tag that is this item's barcode, SKU or code.
   bool matches(String typed) {

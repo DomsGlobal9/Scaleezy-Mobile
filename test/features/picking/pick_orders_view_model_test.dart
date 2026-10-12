@@ -5,34 +5,41 @@ import 'package:scaleezy/features/picking/presentation/view_models/pick_orders_v
 import 'picking_fakes.dart';
 
 void main() {
-  test(
-    'opens on the selected store, else the first store that is not online',
-    () async {
-      final repo = FakePickingRepository(orders: (_) async => [order('o1')]);
-      final online = store('web', type: 'ONLINE');
-
-      final picked = PickOrdersViewModel(repo)
-        ..start(store('L2'), [online, store('L1'), store('L2')]);
-      await pumpEventQueue();
-      expect(picked.location?.id, 'L2');
-      expect(picked.orders?.single.id, 'o1');
-
-      final first = PickOrdersViewModel(repo)
-        ..start(null, [online, store('L1')]);
-      await pumpEventQueue();
-      expect(first.location?.id, 'L1');
-
-      expect(repo.calls, ['orders L2', 'orders L1']);
-    },
-  );
-
-  test('with no store there is nothing to load', () async {
-    final repo = FakePickingRepository();
-    final vm = PickOrdersViewModel(repo)..start(null, const []);
+  test('lists the orders of the store it is given', () async {
+    final repo = FakePickingRepository(orders: (_) async => [order('o1')]);
+    final vm = PickOrdersViewModel(repo)..show(store('L2'));
     await pumpEventQueue();
 
-    expect(vm.error, 'No store is set up yet, so there are no orders to pick.');
+    expect(vm.location?.id, 'L2');
+    expect(vm.orders?.single.id, 'o1');
+    expect(repo.calls, ['orders L2']);
+  });
+
+  test('before the shop knows its store there is nothing to load', () async {
+    final repo = FakePickingRepository();
+    final vm = PickOrdersViewModel(repo)..show(null);
+    await pumpEventQueue();
+
+    expect(vm.error, isNull);
+    expect(vm.orders, isNull);
     expect(repo.calls, isEmpty);
+  });
+
+  test('another store starts afresh with nothing chosen', () async {
+    final repo = FakePickingRepository(orders: (_) async => [order('o1')]);
+    final vm = PickOrdersViewModel(repo)..show(store('L1'));
+    await pumpEventQueue();
+    vm.toggle('o1');
+
+    vm.show(store('L1')); // the same store reloads and keeps the choice
+    await pumpEventQueue();
+    expect(vm.selected, ['o1']);
+
+    vm.show(store('L2'));
+    expect(vm.orders, isNull);
+    expect(vm.selected, isEmpty);
+    await pumpEventQueue();
+    expect(repo.calls, ['orders L1', 'orders L1', 'orders L2']);
   });
 
   test('a failed load shows the server message', () async {
@@ -40,18 +47,18 @@ void main() {
       orders: (_) async =>
           throw const ApiException('Could not load the orders to pick.'),
     );
-    final vm = PickOrdersViewModel(repo)..start(store('L1'), const []);
+    final vm = PickOrdersViewModel(repo)..show(store('L1'));
     await pumpEventQueue();
 
     expect(vm.orders, isNull);
-    expect(vm.error, 'Could not load the orders to pick.');
+    expect(vm.error?.message, 'Could not load the orders to pick.');
   });
 
   test('chooses orders one by one, at most 30, or all at once', () async {
     final many = [for (var i = 0; i < 32; i++) order('o$i')];
     final vm = PickOrdersViewModel(
       FakePickingRepository(orders: (_) async => many),
-    )..start(store('L1'), const []);
+    )..show(store('L1'));
     await pumpEventQueue();
 
     vm.toggle('o3');
@@ -73,7 +80,7 @@ void main() {
   test('after sending out, the choice clears and the orders reload', () async {
     var orders = [order('o1'), order('o2')];
     final repo = FakePickingRepository(orders: (_) async => orders);
-    final vm = PickOrdersViewModel(repo)..start(store('L1'), const []);
+    final vm = PickOrdersViewModel(repo)..show(store('L1'));
     await pumpEventQueue();
     vm.toggle('o1');
     vm.toggle('o2');

@@ -25,7 +25,7 @@ void main() {
 
     fail = true;
     await vm.load();
-    expect(vm.error, 'The server is busy.');
+    expect(vm.error?.message, 'The server is busy.');
     expect(repo.calls, ['waiting L1', 'waiting L1']);
   });
 

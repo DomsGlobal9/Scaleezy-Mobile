@@ -22,7 +22,7 @@ void main() {
 
     fail = true;
     await vm.load();
-    expect(vm.error, 'Shelf not found.');
+    expect(vm.error?.message, 'Shelf not found.');
     expect(vm.spot, isNotNull);
   });
 

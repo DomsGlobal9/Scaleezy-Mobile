@@ -108,7 +108,7 @@ void main() {
 
     final p = first.picks.single;
     expect((p.orderId, p.salesOrderItemId, p.quantity), ('so1', 'i1', 2));
-    expect(p.item.detail, 'Red • Size M • BAN-RED-M');
+    expect(p.item.detail, 'Red · Size M · BAN-RED-M');
     expect(p.item.matches(' 8901234 '), isTrue);
     expect(p.item.matches('ban-red-m'), isTrue);
     expect(p.item.matches('v0042'), isTrue);
@@ -120,7 +120,7 @@ void main() {
 
   test('a free size is not called "Size Free"', () {
     final item = PickItem.fromJson({'sku': 'DUP-1', 'size': 'Free'});
-    expect(item.detail, 'Free • DUP-1');
+    expect(item.detail, 'Free · DUP-1');
   });
 
   test('a dispatch line names its shelves only when there are some', () {

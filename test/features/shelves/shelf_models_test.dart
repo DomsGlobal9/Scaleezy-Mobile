@@ -63,13 +63,21 @@ void main() {
           'usesShelves': true,
           'notShelved': 2,
           'shelves': [
-            {'spotId': 's1', 'address': 'R1-S1', 'quantity': 3},
+            {
+              'spotId': 's1',
+              'address': 'R1-S1',
+              'colour': '#ff0000',
+              'isShopFloor': true,
+              'quantity': 3,
+            },
           ],
         },
       ],
     });
     expect(w.item.label, 'Red');
     expect(w.places.single.shelves.single.quantity, 3);
+    expect(w.places.single.shelves.single.isShopFloor, isTrue);
+    expect(w.places.single.shelves.single.colour, 0xFFFF0000);
     expect(w.places.single.notShelved, 2);
   });
 }

@@ -12,12 +12,12 @@ class WaitingToShelveViewModel extends ViewModel {
   final ShelfRepository _repo;
 
   List<NotShelvedItem>? _items;
-  String? _error;
+  ApiException? _error;
   String? _warning;
 
   /// Null until the first load arrives.
   List<NotShelvedItem>? get items => _items;
-  String? get error => _error;
+  ApiException? get error => _error;
 
   /// What the server cautioned about on the last successful [putAway], if anything.
   String? get warning => _warning;
@@ -35,7 +35,7 @@ class WaitingToShelveViewModel extends ViewModel {
       _items = items;
     } on ApiException catch (e) {
       if (disposed) return;
-      _error = e.message;
+      _error = e;
     }
     notifyListeners();
   }

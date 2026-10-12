@@ -5,37 +5,56 @@ import 'package:scaleezy/core/view_model/view_model.dart';
 import 'package:scaleezy/features/shelves/data/shelf_models.dart';
 import 'package:scaleezy/features/shelves/data/shelf_repository.dart';
 
-/// "Where is it?": which shelves a piece is on, searched by name, SKU or barcode.
+/// "Where is it?": which shelves a piece is on, searched by name, SKU or barcode in the
+/// selected store, or in every location when asked (the website's `WhereIsIt`).
 class FindPieceViewModel extends ViewModel {
   FindPieceViewModel({this.locationId, ShelfRepository? repo})
     : _repo = repo ?? ShelfRepository();
 
-  /// The store the person came from; its places are listed first.
-  final String? locationId;
+  /// The app's selected store: searched alone unless [everywhere], and listed first.
+  String? locationId;
   final ShelfRepository _repo;
 
   List<WhereItem>? _results;
   bool _loading = false;
-  String? _error;
+  ApiException? _error;
+  bool _everywhere = false;
+  String _query = '';
   int _requestId = 0;
   Timer? _debounce;
 
   /// Null while nothing has been searched.
   List<WhereItem>? get results => _results;
   bool get loading => _loading;
-  String? get error => _error;
+  ApiException? get error => _error;
+
+  /// "Look in every location", not just [locationId].
+  bool get everywhere => _everywhere;
+
+  /// The text the results are for.
+  String get query => _query;
 
   /// Typing searches once the person pauses.
   void typed(String q) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () => search(q));
+    _debounce = Timer(const Duration(milliseconds: 250), () => search(q));
   }
 
-  /// shelf:view. Every store is searched; [placesOf] puts this one first.
+  /// Searches [text] (what is in the box now) again in every location, or in this store only.
+  void setEverywhere(bool value, String text) {
+    if (value == _everywhere) return;
+    _everywhere = value;
+    search(text);
+  }
+
+  /// shelf:view
   Future<void> search(String q) async {
+    _debounce?.cancel();
     final id = ++_requestId;
-    if (q.trim().isEmpty) {
+    _query = q.trim();
+    if (_query.isEmpty) {
       _results = null;
+      _error = null;
       _loading = false;
       notifyListeners();
       return;
@@ -44,13 +63,16 @@ class FindPieceViewModel extends ViewModel {
     _error = null;
     notifyListeners();
     try {
-      final r = await _repo.findOnShelves(q);
+      final r = await _repo.findOnShelves(
+        _query,
+        locationId: _everywhere ? null : locationId,
+      );
       // A newer search started meanwhile; this answer is for old text.
       if (disposed || id != _requestId) return;
       _results = r;
     } on ApiException catch (e) {
       if (disposed || id != _requestId) return;
-      _error = e.message;
+      _error = e;
     }
     _loading = false;
     notifyListeners();

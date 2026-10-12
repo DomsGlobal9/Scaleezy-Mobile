@@ -195,12 +195,16 @@ class ShelfPlace {
   final String spotId;
   final String address;
   final String? name;
+  final int? colour;
+  final bool isShopFloor;
   final int quantity;
 
   const ShelfPlace({
     required this.spotId,
     required this.address,
     this.name,
+    this.colour,
+    this.isShopFloor = false,
     required this.quantity,
   });
 
@@ -208,6 +212,8 @@ class ShelfPlace {
     spotId: asString(j['spotId']),
     address: asString(j['address']),
     name: asOptString(j['name']),
+    colour: asHexColor(j['colour']),
+    isShopFloor: j['isShopFloor'] == true,
     quantity: asInt(j['quantity']),
   );
 }
