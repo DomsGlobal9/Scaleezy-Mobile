@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:scaleezy/core/shop/shop_models.dart';
 import 'package:scaleezy/features/products/data/product_models.dart';
 import 'package:scaleezy/features/shelves/data/shelf_models.dart';
 import 'package:scaleezy/features/customers/data/customer_models.dart';
@@ -7,6 +8,7 @@ import 'package:scaleezy/features/products/presentation/product_detail_screen.da
 import 'package:scaleezy/features/shelves/presentation/shelves_screen.dart';
 import 'package:scaleezy/features/customers/presentation/customers_screen.dart';
 import 'package:scaleezy/features/purchase_orders/presentation/purchase_orders_screen.dart';
+import 'package:scaleezy/features/picking/presentation/picking_screen.dart';
 
 /// Every push from one screen to another, typed, so a screen never builds a route itself.
 /// Switching bottom tabs stays in MainNavigationScreen.
@@ -64,4 +66,20 @@ abstract final class AppRoutes {
     BuildContext context,
     PurchaseOrderDetail po,
   ) => _push<bool>(context, ReceiveDeliveryScreen(po: po));
+
+  /// Orders waiting to go out from [location] (else the selected store), to pick together.
+  static Future<void> pickOrders(
+    BuildContext context, {
+    StockLocation? location,
+  }) => _push<Object?>(context, PickOrdersScreen(location: location));
+
+  /// Pops `true` when something was sent out.
+  static Future<bool?> pickWalk(
+    BuildContext context, {
+    required String locationId,
+    required List<String> orderIds,
+  }) => _push<bool>(
+    context,
+    PickWalkScreen(locationId: locationId, orderIds: orderIds),
+  );
 }

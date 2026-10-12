@@ -188,6 +188,22 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
                   ],
                 ).entrance(0),
               ),
+              if (SessionScope.of(context).can('shelf:putaway'))
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  child: _bigAction(
+                    Icons.playlist_add_check_rounded,
+                    'Pick orders',
+                    'Walk the shelves once to collect orders',
+                    () async {
+                      await AppRoutes.pickOrders(
+                        context,
+                        location: _vm.location,
+                      );
+                      _vm.load();
+                    },
+                  ).entrance(0),
+                ),
               const SizedBox(height: 16),
               if (tree == null && _vm.error != null)
                 Padding(
