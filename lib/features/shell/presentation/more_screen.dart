@@ -6,6 +6,7 @@ import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/customers/presentation/customers_screen.dart';
+import 'package:scaleezy/features/day_book/presentation/day_book_screen.dart';
 import 'package:scaleezy/features/purchase_orders/presentation/purchase_orders_screen.dart';
 import 'package:scaleezy/features/settings/presentation/settings_screen.dart';
 import 'package:scaleezy/features/shelves/presentation/shelves_screen.dart';
@@ -92,6 +93,15 @@ class MoreScreen extends StatelessWidget {
       AppColors.accentPurpleLight,
       'customer:view',
       () => const CustomersScreen(),
+    ),
+    _Module(
+      Icons.menu_book_rounded,
+      'Day book',
+      'One day, closed off',
+      AppColors.accentDanger,
+      AppColors.accentDangerLight,
+      'report:financial',
+      () => const DayBookScreen(),
     ),
     _Module(
       Icons.handshake_rounded,

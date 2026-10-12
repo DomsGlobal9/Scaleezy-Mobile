@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:scaleezy/app/app_routes.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/money.dart';
@@ -479,6 +480,23 @@ void showOrderDetails(BuildContext context, OrderDetailsViewModel viewModel) {
                   color: AppColors.textMuted,
                 ),
               ),
+              // As on the web: only counter bills have a receipt. Its permission, sales_order:view,
+              // is the one this order was just loaded with.
+              if (d.summary.atCounter) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () => AppRoutes.receipt(context, d.summary.id),
+                    icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                    label: const Text('Receipt'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.accentGold,
+                      side: const BorderSide(color: AppColors.accentGoldBorder),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 18),
               for (final (i, l) in d.lines.indexed)
                 Container(
