@@ -41,11 +41,19 @@ source before building any item; it moves fast. Backend details for each item: `
 locations CRUD, catalogue config, roles, online shop, Razorpay, connected websites, Shopify,
 WhatsApp linking, POS tills, CSV import, platform console, help center (link out), signup.
 
-## Decisions needed before building
+## Decided (2026-10-12)
 
-- **Counter sale (new bill)**: the web removed "New sale" on 2026-10-06; bills are made on the
-  separate ScaleEzy POS till (`/pos/v1/*`, connection key, not a user session). `POST /counter-sales`
-  returns 410 in production. Do not build a counter sale in the app without the owner's say-so.
+- **No billing or udhaar collection in the app.** The web removed "New sale" on 2026-10-06; bills
+  are made on the separate ScaleEzy POS till (`/pos/v1/*`, connection key, not a user session) and
+  `POST /counter-sales` returns 410. Recording udhaar payments also exists only in the till API.
+  The app looks up points and store credit and shares receipts; it does not take money.
+- **Build order**: stock audit with the scanner → customer points & store credit → pick lists and
+  store transfers → day book (view) and receipt share → alerts, stock adjustment, order
+  confirm/cancel/dispatch, returns.
+
+## Still open
+
+
 - **Store selection**: the web always has a store selected (saved choice, else `MAIN-STORE`, else
   first) and persists it; the app defaults to "all stores" (no `x-location-id`) and does not persist.
 - **Branding**: the web has a lime / deep-green brand on zinc neutrals with light + dark themes; the
