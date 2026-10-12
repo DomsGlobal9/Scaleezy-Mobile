@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:scaleezy/app/router.dart';
-import 'package:scaleezy/core/shop/shop_models.dart';
 import 'package:scaleezy/features/customers/data/customer_models.dart';
 import 'package:scaleezy/features/products/data/product_models.dart';
 import 'package:scaleezy/features/purchase_orders/data/purchase_order_models.dart';
@@ -35,18 +34,15 @@ abstract final class AppRoutes {
   static Future<void> spot(BuildContext context, String spotId) =>
       context.push<void>(Paths.spot(spotId));
 
-  static Future<void> findPiece(
-    BuildContext context, {
-    String? locationId,
-    String? initialQuery,
-  }) => context.push<void>(
-    _at(Paths.findPiece, {'q': initialQuery, 'location': locationId}),
-  );
+  /// Searches the selected store (or every location, by choice on the screen).
+  static Future<void> findPiece(BuildContext context, {String? initialQuery}) =>
+      context.push<void>(_at(Paths.findPiece, {'q': initialQuery}));
 
-  /// The store's name comes from the shop (or from [target]).
+  /// Put away in [locationId], else the selected store. The store's name comes from the shop
+  /// (or from [target]).
   static Future<void> waitingToShelve(
     BuildContext context, {
-    required String locationId,
+    String? locationId,
     SpotContents? target,
   }) => context.push<void>(
     _at(Paths.putAway, {'location': locationId, 'spot': target?.spotId}),
@@ -70,20 +66,15 @@ abstract final class AppRoutes {
     PurchaseOrderDetail po,
   ) => context.push<bool>(Paths.receiveDelivery(po.summary.id), extra: po);
 
-  /// Orders waiting to go out from [location] (else the selected store), to pick together.
-  static Future<void> pickOrders(
-    BuildContext context, {
-    StockLocation? location,
-  }) => context.push<void>(Paths.pickOrders, extra: location);
+  /// Orders waiting to go out from the selected store, to pick together.
+  static Future<void> pickOrders(BuildContext context) =>
+      context.push<void>(Paths.pickOrders);
 
-  /// Pops `true` when something was sent out.
+  /// One walk in the selected store. Pops `true` when something was sent out.
   static Future<bool?> pickWalk(
     BuildContext context, {
-    required String locationId,
     required List<String> orderIds,
-  }) => context.push<bool>(
-    _at(Paths.pickWalk, {'location': locationId, 'orders': orderIds.join(',')}),
-  );
+  }) => context.push<bool>(_at(Paths.pickWalk, {'orders': orderIds.join(',')}));
 
   /// Move pieces from one store to another.
   static Future<void> moveStock(BuildContext context) =>

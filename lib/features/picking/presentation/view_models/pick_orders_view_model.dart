@@ -4,7 +4,7 @@ import 'package:scaleezy/core/view_model/view_model.dart';
 import 'package:scaleezy/features/picking/data/picking_models.dart';
 import 'package:scaleezy/features/picking/data/picking_repository.dart';
 
-/// The orders waiting to go out from one store, and which of them to pick together.
+/// The orders waiting to go out from the selected store, and which of them to pick together.
 class PickOrdersViewModel extends ViewModel {
   PickOrdersViewModel([PickingRepository? repo])
     : _repo = repo ?? PickingRepository();
@@ -16,46 +16,46 @@ class PickOrdersViewModel extends ViewModel {
 
   StockLocation? _location;
   List<PickOrder>? _orders;
-  String? _error;
+  ApiException? _error;
   final List<String> _selected = [];
+  int _requestId = 0;
 
-  /// Null until a store is known.
+  /// The app's selected store; null until the shop knows it.
   StockLocation? get location => _location;
 
   /// Null until the first load arrives.
   List<PickOrder>? get orders => _orders;
-  String? get error => _error;
+  ApiException? get error => _error;
   List<String> get selected => List.unmodifiable(_selected);
   bool isSelected(String id) => _selected.contains(id);
 
-  /// Same rule as the shelves: the selected store, else the first that is not online.
-  void start(StockLocation? selected, List<StockLocation> locations) {
-    _location =
-        selected ??
-        locations.where((l) => l.type != 'ONLINE').firstOrNull ??
-        locations.firstOrNull;
+  /// Shows [location] (the app's selected store); another store starts with nothing chosen.
+  void show(StockLocation? location) {
+    if (location?.id != _location?.id) {
+      _orders = null;
+      _selected.clear();
+    }
+    _location = location;
     load();
   }
 
   /// shelf:putaway
   Future<void> load() async {
+    // Switching store mid-load starts another load; only the newest one may land.
+    final id = ++_requestId;
     final loc = _location;
-    if (loc == null) {
-      _error = 'No store is set up yet, so there are no orders to pick.';
-      notifyListeners();
-      return;
-    }
     _error = null;
     notifyListeners();
+    if (loc == null) return;
     try {
       final orders = await _repo.pickOrders(loc.id);
-      if (disposed) return;
+      if (disposed || id != _requestId) return;
       _orders = orders;
       // Orders that went out meanwhile cannot stay chosen.
-      _selected.removeWhere((id) => !orders.any((o) => o.id == id));
+      _selected.removeWhere((s) => !orders.any((o) => o.id == s));
     } on ApiException catch (e) {
-      if (disposed) return;
-      _error = e.message;
+      if (disposed || id != _requestId) return;
+      _error = e;
     }
     notifyListeners();
   }

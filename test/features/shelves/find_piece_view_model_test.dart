@@ -20,15 +20,16 @@ WherePlace place(String locationId) => WherePlace(
 void main() {
   final found = WhereItem(item: item('v1'), places: [place('L1'), place('L2')]);
 
-  test('searches every store, and blank text clears the results', () async {
+  test('searches this store, and blank text clears the results', () async {
     final repo = FakeShelfRepository(find: (_) async => [found]);
     final vm = FindPieceViewModel(locationId: 'L2', repo: repo);
 
-    await vm.search('saree');
+    await vm.search(' saree ');
     expect(vm.results, hasLength(1));
+    expect(vm.query, 'saree');
     expect(vm.loading, isFalse);
-    // Every store is searched; this one is only put first.
-    expect(repo.calls, ['find saree @null']);
+    expect(repo.calls, ['find saree @L2']);
+    // This store's places come first.
     expect(vm.placesOf(found).map((p) => p.locationId), ['L2', 'L1']);
 
     await vm.search('  ');
@@ -36,19 +37,38 @@ void main() {
     expect(repo.calls, hasLength(1));
   });
 
+  test('"Look in every location" searches again without a store', () async {
+    final repo = FakeShelfRepository(find: (_) async => [found]);
+    final vm = FindPieceViewModel(locationId: 'L2', repo: repo);
+    await vm.search('saree');
+
+    vm.setEverywhere(true, 'saree');
+    await pumpEventQueue();
+    expect(vm.everywhere, isTrue);
+    vm.setEverywhere(true, 'saree'); // unchanged: no new search
+    vm.setEverywhere(false, 'saree');
+    await pumpEventQueue();
+
+    expect(repo.calls, [
+      'find saree @L2',
+      'find saree @null',
+      'find saree @L2',
+    ]);
+  });
+
   test('without a store places keep the server order', () {
     final vm = FindPieceViewModel(repo: FakeShelfRepository());
     expect(vm.placesOf(found).map((p) => p.locationId), ['L1', 'L2']);
   });
 
-  test('a failed search shows the server message', () async {
+  test('a failed search keeps the server error', () async {
     final repo = FakeShelfRepository(
       find: (_) async => throw const ApiException('The server is busy.'),
     );
     final vm = FindPieceViewModel(repo: repo);
 
     await vm.search('saree');
-    expect(vm.error, 'The server is busy.');
+    expect(vm.error?.message, 'The server is busy.');
     expect(vm.loading, isFalse);
   });
 
@@ -67,13 +87,15 @@ void main() {
     expect(vm.results, [found]);
   });
 
-  test('typing searches once the person pauses', () async {
+  test('typing searches once the person pauses for 250 ms', () async {
     final repo = FakeShelfRepository(find: (_) async => [found]);
     final vm = FindPieceViewModel(repo: repo);
 
     vm.typed('sa');
     vm.typed('saree');
-    await Future<void>.delayed(const Duration(milliseconds: 450));
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(repo.calls, isEmpty);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
 
     expect(repo.calls, ['find saree @null']);
     vm.dispose();

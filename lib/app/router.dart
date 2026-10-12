@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
-import 'package:scaleezy/core/shop/shop_models.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/view_model/view_model.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
@@ -141,12 +140,15 @@ GoRouter buildRouter(AuthSession session) {
         builder: (_, state) => _guard(
           'shelf:putaway',
           'pick orders',
-          PickWalkScreen(
-            locationId: state.uri.queryParameters['location'] ?? '',
-            orderIds: (state.uri.queryParameters['orders'] ?? '')
-                .split(',')
-                .where((id) => id.isNotEmpty)
-                .toList(),
+          // The walk is in the selected store, as the list it was chosen from.
+          Builder(
+            builder: (context) => PickWalkScreen(
+              locationId: ShopScope.of(context).selectedLocation?.id ?? '',
+              orderIds: (state.uri.queryParameters['orders'] ?? '')
+                  .split(',')
+                  .where((id) => id.isNotEmpty)
+                  .toList(),
+            ),
           ),
         ),
       ),
@@ -155,10 +157,7 @@ GoRouter buildRouter(AuthSession session) {
         builder: (_, state) => _guard(
           'shelf:view',
           'look up where an item is',
-          FindPieceScreen(
-            locationId: state.uri.queryParameters['location'],
-            initialQuery: state.uri.queryParameters['q'],
-          ),
+          FindPieceScreen(initialQuery: state.uri.queryParameters['q']),
         ),
       ),
       GoRoute(
@@ -300,7 +299,7 @@ GoRouter buildRouter(AuthSession session) {
                     builder: (_, state) => _guard(
                       'shelf:putaway',
                       'pick orders',
-                      PickOrdersScreen(location: state.extra as StockLocation?),
+                      const PickOrdersScreen(),
                     ),
                   ),
                 ],
@@ -468,16 +467,22 @@ class _Splash extends StatelessWidget {
   }
 }
 
-/// Put away at `?location=`, onto `?spot=` when given (passed in, else fetched).
+/// Put away at `?location=` (another store than the selected one, e.g. where a transfer went),
+/// else in the selected store; onto `?spot=` when given (passed in, else fetched).
 Widget _putAway(GoRouterState state) {
-  final locationId = state.uri.queryParameters['location'] ?? '';
   final spotId = state.uri.queryParameters['spot'];
   return Builder(
     builder: (context) {
+      final shop = ShopScope.of(context);
+      final locationId =
+          state.uri.queryParameters['location'] ??
+          shop.selectedLocation?.id ??
+          '';
       // The spot names its store; otherwise the shop's list does.
-      final storeName = ShopScope.of(
-        context,
-      ).locations.where((l) => l.id == locationId).firstOrNull?.name;
+      final storeName = shop.locations
+          .where((l) => l.id == locationId)
+          .firstOrNull
+          ?.name;
       Widget screen(SpotContents? target) => WaitingToShelveScreen(
         locationId: locationId,
         locationName: target?.locationName ?? storeName ?? '',

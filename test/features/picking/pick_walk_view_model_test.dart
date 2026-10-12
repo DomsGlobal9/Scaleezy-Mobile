@@ -70,7 +70,7 @@ void main() {
 
     expect(vm.list, isNull);
     expect(
-      vm.error,
+      vm.error?.message,
       'SO-o1 is dispatched, so there is nothing to pick for it.',
     );
   });

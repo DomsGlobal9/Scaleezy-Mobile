@@ -12,12 +12,12 @@ class SpotViewModel extends ViewModel {
   final ShelfRepository _repo;
 
   SpotContents? _spot;
-  String? _error;
+  ApiException? _error;
   String? _warning;
 
   /// Null until the first load arrives.
   SpotContents? get spot => _spot;
-  String? get error => _error;
+  ApiException? get error => _error;
 
   /// What the server cautioned about on the last successful [move], if anything.
   String? get warning => _warning;
@@ -32,7 +32,7 @@ class SpotViewModel extends ViewModel {
       _spot = s;
     } on ApiException catch (e) {
       if (disposed) return;
-      _error = e.message;
+      _error = e;
     }
     notifyListeners();
   }

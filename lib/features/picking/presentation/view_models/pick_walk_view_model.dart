@@ -33,7 +33,7 @@ class PickWalkViewModel extends ViewModel {
 
   PickList? _list;
   List<PickTask> _tasks = const [];
-  String? _error;
+  ApiException? _error;
   final Map<String, int> _picked = {};
   final Map<String, int> _missing = {};
   bool _reporting = false;
@@ -42,7 +42,7 @@ class PickWalkViewModel extends ViewModel {
   /// Null until the list arrives.
   PickList? get list => _list;
   List<PickTask> get tasks => _tasks;
-  String? get error => _error;
+  ApiException? get error => _error;
 
   /// A not-found report is on its way.
   bool get reporting => _reporting;
@@ -87,7 +87,7 @@ class PickWalkViewModel extends ViewModel {
       ];
     } on ApiException catch (e) {
       if (disposed) return;
-      _error = e.message;
+      _error = e;
     }
     notifyListeners();
   }

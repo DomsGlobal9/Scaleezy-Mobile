@@ -4,10 +4,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:scaleezy/app/app_routes.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
-import 'package:scaleezy/core/shop/shop_models.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/scan_sheet.dart';
+import 'package:scaleezy/core/widgets/status_pill.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/shelves/data/shelf_models.dart';
 import 'package:scaleezy/features/shelves/presentation/view_models/find_piece_view_model.dart';
@@ -15,6 +15,7 @@ import 'package:scaleezy/features/shelves/presentation/view_models/move_sheet_vi
 import 'package:scaleezy/features/shelves/presentation/view_models/shelves_view_model.dart';
 import 'package:scaleezy/features/shelves/presentation/view_models/spot_view_model.dart';
 import 'package:scaleezy/features/shelves/presentation/view_models/waiting_to_shelve_view_model.dart';
+import 'package:scaleezy/features/shelves/presentation/widgets/shelf_bits.dart';
 
 IconData _kindIcon(String kind) => switch (kind) {
   'AREA' => Icons.meeting_room_outlined,
@@ -29,6 +30,15 @@ IconData _kindIcon(String kind) => switch (kind) {
 
 String _kindLabel(String kind) =>
     kind.isEmpty ? 'Spot' : kind[0] + kind.substring(1).toLowerCase();
+
+/// "Red · Size M · SKU-1", as the website's `itemDetail`.
+String _detail(ShelfItem i) => [
+  ?i.colorName,
+  if (i.size != null) i.size == 'Free' ? i.size! : 'Size ${i.size}',
+  i.sku,
+].join(' · ');
+
+const _tabular = [FontFeature.tabularFigures()];
 
 /// Scan a shelf label; the caller's view model looks it up. Shared by the overview and the
 /// pickers.
@@ -50,6 +60,7 @@ class ShelvesScreen extends StatefulWidget {
 
 class _ShelvesScreenState extends State<ShelvesScreen> {
   late final ShelvesViewModel _vm = widget.viewModel ?? ShelvesViewModel();
+  (int, String?)? _seen;
 
   /// Racks that are opened out to show what is inside.
   final Set<String> _open = {};
@@ -57,10 +68,13 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Until a store is known, try again whenever the shop's stores change.
-    if (_vm.location == null) {
-      final shop = ShopScope.of(context);
-      _vm.start(shop.selectedLocation, shop.locations);
+    // The app's one store; switching it (or the shop loading it) shows that store's shelves.
+    final shop = ShopScope.of(context);
+    final seen = (shop.revision, shop.selectedLocation?.id);
+    if (seen != _seen) {
+      _seen = seen;
+      _open.clear();
+      _vm.show(shop.selectedLocation);
     }
   }
 
@@ -68,12 +82,6 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
   void dispose() {
     if (widget.viewModel == null) _vm.dispose();
     super.dispose();
-  }
-
-  void _pickLocation(StockLocation loc) {
-    if (loc.id == _vm.location?.id) return;
-    _open.clear();
-    _vm.pickLocation(loc);
   }
 
   Future<void> _openSpot(String spotId) async {
@@ -102,65 +110,19 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
   }
 
   Widget _buildScreen() {
-    final shop = ShopScope.of(context);
-    final stores = ShelvesViewModel.storesOf(shop.locations);
     final tree = _vm.tree;
+    final error = _vm.error;
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppColors.accentGold,
           onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 32),
             children: [
               PageHeader(title: 'Shelves', subtitle: _vm.location?.name),
-              if (stores.length > 1)
-                SizedBox(
-                  height: 44,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: stores.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 8),
-                    itemBuilder: (_, i) {
-                      final l = stores[i];
-                      final sel = l.id == _vm.location?.id;
-                      return Pressable(
-                        onTap: () => _pickLocation(l),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: sel
-                                ? AppColors.textPrimary
-                                : AppColors.bgCard,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: sel
-                                  ? AppColors.textPrimary
-                                  : AppColors.borderLight,
-                            ),
-                          ),
-                          child: Text(
-                            l.name,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: sel
-                                  ? Colors.white
-                                  : AppColors.textSecondary,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Row(
                   children: [
                     Expanded(
@@ -171,18 +133,13 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
                         _scan,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: _bigAction(
                         Icons.travel_explore_rounded,
                         'Where is it?',
                         'Which shelf is it on?',
-                        () {
-                          AppRoutes.findPiece(
-                            context,
-                            locationId: _vm.location?.id,
-                          );
-                        },
+                        () => AppRoutes.findPiece(context),
                       ),
                     ),
                   ],
@@ -190,63 +147,60 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
               ),
               if (SessionScope.of(context).can('shelf:putaway'))
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                   child: _bigAction(
                     Icons.playlist_add_check_rounded,
                     'Pick orders',
                     'Walk the shelves once to collect orders',
                     () async {
-                      await AppRoutes.pickOrders(
-                        context,
-                        location: _vm.location,
-                      );
+                      await AppRoutes.pickOrders(context);
                       _vm.load();
                     },
                   ).entrance(0),
                 ),
               const SizedBox(height: 16),
-              if (tree == null && _vm.error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 60),
-                  child: ErrorView(message: _vm.error!, onRetry: _vm.load),
+              if (_vm.location == null)
+                const EmptyState(
+                  Icons.place_outlined,
+                  'No store is set up yet, so there are no shelves to show.',
                 )
+              else if (tree == null && error != null)
+                ErrorView.fromError(error, what: 'shelves', onRetry: _vm.load)
               else if (tree == null)
                 const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     children: [
-                      Skeleton(height: 120, radius: 22),
+                      Skeleton(height: 112),
                       SizedBox(height: 16),
-                      Skeleton(height: 60, radius: 16),
-                      SizedBox(height: 8),
-                      Skeleton(height: 60, radius: 16),
+                      Skeleton(height: 60),
+                      SizedBox(height: 10),
+                      Skeleton(height: 60),
                     ],
                   ),
                 )
               else ...[
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: _summary(tree).entrance(1),
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 20),
                 if (tree.count == 0)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: _Note(
-                      icon: Icons.shelves,
-                      text:
-                          'No racks or shelves are set up for this store yet. They are laid out once from the web app; '
-                          'after that, everything here works from the phone.',
-                    ),
+                  const EmptyState(
+                    Icons.shelves,
+                    'No racks or shelves here yet',
+                    text:
+                        'They are laid out once from the website, under Racks & shelves; '
+                        'after that, everything here works from the phone.',
                   )
                 else ...[
                   const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    padding: EdgeInsets.symmetric(horizontal: 16),
                     child: SectionHeader(title: 'Racks & shelves'),
                   ),
                   for (final (i, s) in tree.spots.indexed)
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: _branch(s, 0).entrance(2 + i),
                     ),
                 ],
@@ -263,49 +217,41 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
     String title,
     String sub,
     VoidCallback onTap,
-  ) => SurfaceCard(
-    onTap: onTap,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppColors.accentGoldLight,
-            borderRadius: BorderRadius.circular(12),
+  ) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    return SurfaceCard(
+      padding: const EdgeInsets.all(14),
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: c.input,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: c.text, size: 20),
           ),
-          child: Icon(icon, color: AppColors.accentGold, size: 22),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          title,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-        ),
-        Text(
-          sub,
-          style: const TextStyle(
-            fontSize: 11,
-            color: AppColors.textMuted,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(height: 10),
+          Text(title, style: type.titleSmall),
+          Text(sub, style: type.bodySmall),
+        ],
+      ),
+    );
+  }
 
   Widget _summary(ShelfTree t) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     final share = t.totalPieces == 0 ? 0.0 : t.onShelves / t.totalPieces;
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: AppColors.heroGradient,
-        borderRadius: BorderRadius.circular(22),
-      ),
+    return SurfaceCard(
       child: Row(
         children: [
           SizedBox(
-            width: 76,
-            height: 76,
+            width: 72,
+            height: 72,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -316,90 +262,69 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
                     curve: Curves.easeOutCubic,
                     builder: (_, v, _) => CircularProgressIndicator(
                       value: v,
-                      strokeWidth: 7,
+                      strokeWidth: 6,
                       strokeCap: StrokeCap.round,
-                      backgroundColor: Colors.white12,
-                      color: const Color(0xFFFDE68A),
+                      backgroundColor: c.input,
+                      color: c.success,
                     ),
                   ),
                 ),
                 Text(
                   '${(share * 100).round()}%',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
+                  style: type.titleMedium!.copyWith(fontFeatures: _tabular),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 18),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'ON SHELVES',
-                  style: TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1,
-                  ),
-                ),
+                Text('ON SHELVES', style: type.labelSmall),
+                const SizedBox(height: 2),
                 Text(
                   '${t.onShelves} of ${t.totalPieces} pieces',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                  ),
+                  style: type.titleMedium!.copyWith(fontFeatures: _tabular),
                 ),
                 const SizedBox(height: 8),
                 if (t.notShelved > 0 && t.count > 0)
                   Pressable(
                     onTap: () async {
-                      await AppRoutes.waitingToShelve(
-                        context,
-                        locationId: t.locationId,
-                      );
+                      await AppRoutes.waitingToShelve(context);
                       _vm.load();
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
+                        horizontal: 8,
+                        vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFDE68A),
-                        borderRadius: BorderRadius.circular(10),
+                        color: tint(c.warning),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            '${t.notShelved} waiting to be put away',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
+                          Flexible(
+                            child: Text(
+                              '${t.notShelved} waiting to be put away',
+                              style: type.labelMedium!.copyWith(
+                                color: c.warning,
+                              ),
                             ),
                           ),
-                          const Icon(Icons.chevron_right_rounded, size: 16),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 16,
+                            color: c.warning,
+                          ),
                         ],
                       ),
                     ),
                   )
                 else
-                  Text(
-                    '${t.count} spots',
-                    style: const TextStyle(
-                      color: Color(0xFF94A3B8),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  Text('${t.count} spots', style: type.bodySmall),
               ],
             ),
           ),
@@ -409,15 +334,13 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
   }
 
   Widget _branch(ShelfSpot s, int depth) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     final open = _open.contains(s.id);
-    final row = Container(
-      margin: EdgeInsets.only(left: depth * 18.0, bottom: 8),
-      decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.borderLight),
-      ),
-      child: ListTile(
+    final row = Padding(
+      padding: EdgeInsets.only(left: depth * 16.0, bottom: 10),
+      child: SurfaceCard(
+        padding: const EdgeInsets.all(14),
         onTap: () {
           if (s.holdsStock) {
             _openSpot(s.id);
@@ -425,52 +348,57 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
             setState(() => open ? _open.remove(s.id) : _open.add(s.id));
           }
         },
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppColors.bgSurface,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            _kindIcon(s.kind),
-            size: 18,
-            color: AppColors.textSecondary,
-          ),
-        ),
-        title: Text(
-          s.title,
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-        ),
-        subtitle: Text(
-          [
-            _kindLabel(s.kind),
-            if (s.name != null) s.address,
-            if (s.isShopFloor) 'Shop floor',
-            if (!s.holdsStock) '${s.children.length} inside',
-          ].join(' • '),
-          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: c.input,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(_kindIcon(s.kind), size: 18, color: c.textSecondary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  s.name == null
+                      ? ShelfAddress(s.address)
+                      : Text(s.name!, style: type.titleSmall),
+                  const SizedBox(height: 2),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        [
+                          _kindLabel(s.kind),
+                          if (s.name != null) s.address,
+                          if (!s.holdsStock) '${s.children.length} inside',
+                        ].join(' · '),
+                        style: type.bodySmall,
+                      ),
+                      if (s.isShopFloor) const ShelfTag(isShopFloor: true),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             Text(
               '${s.branchPieces}',
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
-            ),
-            const SizedBox(width: 2),
-            const Text(
-              'pcs',
-              style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+              style: type.titleSmall!.copyWith(fontFeatures: _tabular),
             ),
             const SizedBox(width: 4),
+            Text(
+              'pieces',
+              style: type.labelMedium!.copyWith(color: c.textMuted),
+            ),
             AnimatedRotation(
               turns: s.holdsStock ? 0 : (open ? 0.25 : 0),
               duration: const Duration(milliseconds: 200),
-              child: const Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.textMuted,
-              ),
+              child: Icon(Icons.chevron_right_rounded, color: c.textMuted),
             ),
           ],
         ),
@@ -480,11 +408,13 @@ class _ShelvesScreenState extends State<ShelvesScreen> {
       children: [
         row,
         AnimatedSize(
-          duration: const Duration(milliseconds: 250),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           child: open
               ? Column(
-                  children: [for (final c in s.children) _branch(c, depth + 1)],
+                  children: [
+                    for (final ch in s.children) _branch(ch, depth + 1),
+                  ],
                 )
               : const SizedBox(width: double.infinity),
         ),
@@ -529,10 +459,7 @@ class _SpotScreenState extends State<SpotScreen> {
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
-      backgroundColor: AppColors.bgCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
+      showDragHandle: true,
       builder: (_) => _MoveSheet(
         item: item,
         locationId: s.locationId,
@@ -576,25 +503,21 @@ class _SpotScreenState extends State<SpotScreen> {
   }
 
   Widget _buildScreen() {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     final s = _vm.spot;
+    final error = _vm.error;
     final canMove = SessionScope.of(context).can('shelf:putaway');
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       floatingActionButton: s != null && s.holdsStock && canMove
           ? FloatingActionButton.extended(
               onPressed: _putHere,
-              backgroundColor: AppColors.accentGold,
-              foregroundColor: Colors.white,
               icon: const Icon(Icons.add_rounded),
-              label: const Text(
-                'Put away',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
+              label: const Text('Put away'),
             ).animate().scale(delay: 300.ms, curve: Curves.easeOutBack)
           : null,
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppColors.accentGold,
           onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 100),
@@ -603,48 +526,39 @@ class _SpotScreenState extends State<SpotScreen> {
                 title: s?.name ?? s?.address ?? 'Shelf',
                 subtitle: s == null
                     ? null
-                    : '${_kindLabel(s.kind)} • ${s.locationName}',
+                    : '${_kindLabel(s.kind)} · ${s.locationName}',
               ),
-              if (s == null && _vm.error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 80),
-                  child: ErrorView(message: _vm.error!, onRetry: _vm.load),
+              if (s == null && error != null)
+                ErrorView.fromError(
+                  error,
+                  what: 'this shelf',
+                  onRetry: _vm.load,
                 )
               else if (s == null)
                 const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Skeleton(height: 200, radius: 22),
+                  padding: EdgeInsets.all(16),
+                  child: Skeleton(height: 120),
                 )
               else ...[
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: SurfaceCard(
                     child: Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: AppColors.accentGoldLight,
-                            borderRadius: BorderRadius.circular(14),
+                            color: c.input,
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Icon(
-                            _kindIcon(s.kind),
-                            color: AppColors.accentGold,
-                          ),
+                          child: Icon(_kindIcon(s.kind), color: c.text),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                s.address,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w900,
-                                  fontFamily: 'monospace',
-                                ),
-                              ),
+                              ShelfAddress(s.address, big: true),
                               if (s.capacity != null) ...[
                                 const SizedBox(height: 8),
                                 ClipRRect(
@@ -652,41 +566,33 @@ class _SpotScreenState extends State<SpotScreen> {
                                   child: LinearProgressIndicator(
                                     value: (s.total / s.capacity!).clamp(0, 1),
                                     minHeight: 6,
-                                    backgroundColor: AppColors.bgSurface,
+                                    backgroundColor: c.input,
                                     color: s.overCapacity
-                                        ? AppColors.accentDanger
-                                        : AppColors.accentSuccess,
+                                        ? c.danger
+                                        : c.success,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   '${s.total} of ${s.capacity} it is meant for',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
+                                  style: type.labelMedium!.copyWith(
                                     color: s.overCapacity
-                                        ? AppColors.accentDanger
-                                        : AppColors.textMuted,
+                                        ? c.danger
+                                        : c.textSecondary,
                                   ),
                                 ),
                               ],
                             ],
                           ),
                         ),
+                        const SizedBox(width: 12),
                         Column(
                           children: [
+                            BigQty('${s.total}'),
                             Text(
-                              '${s.total}',
-                              style: const TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const Text(
-                              'pieces',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: AppColors.textMuted,
+                              s.total == 1 ? 'piece' : 'pieces',
+                              style: type.labelMedium!.copyWith(
+                                color: c.textMuted,
                               ),
                             ),
                           ],
@@ -695,32 +601,23 @@ class _SpotScreenState extends State<SpotScreen> {
                     ),
                   ).entrance(0),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
                 if (!s.holdsStock)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: _Note(
-                      icon: Icons.account_tree_outlined,
-                      text:
-                          'This holds other shelves. Open one of those to see pieces.',
-                    ),
+                  const EmptyState(
+                    Icons.account_tree_outlined,
+                    'This holds other shelves',
+                    text: 'Open one of those to see pieces.',
                   )
                 else if (s.items.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: _Note(
-                      icon: Icons.inbox_outlined,
-                      text: 'This shelf is empty.',
-                    ),
-                  )
+                  const EmptyState(Icons.inbox_outlined, 'This shelf is empty')
                 else ...[
                   const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    padding: EdgeInsets.symmetric(horizontal: 16),
                     child: SectionHeader(title: 'On this shelf'),
                   ),
                   for (final (i, item) in s.items.indexed)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                       child: _ItemRow(
                         item: item,
                         trailing: Row(
@@ -728,19 +625,15 @@ class _SpotScreenState extends State<SpotScreen> {
                           children: [
                             Text(
                               '×${item.quantity}',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
+                              style: type.titleMedium!.copyWith(
+                                fontFeatures: _tabular,
                               ),
                             ),
                             if (canMove)
                               IconButton(
                                 tooltip: 'Move',
                                 onPressed: () => _moveOff(item),
-                                icon: const Icon(
-                                  Icons.swap_horiz_rounded,
-                                  color: AppColors.accentGold,
-                                ),
+                                icon: const Icon(Icons.swap_horiz_rounded),
                               ),
                           ],
                         ),
@@ -759,35 +652,33 @@ class _SpotScreenState extends State<SpotScreen> {
 // ---- Where is it? ---------------------------------------------------------------------------------
 
 class FindPieceScreen extends StatefulWidget {
-  final String? locationId;
   final String? initialQuery;
 
   /// Tests pass their own; otherwise the screen makes and owns one.
   final FindPieceViewModel? viewModel;
 
-  const FindPieceScreen({
-    super.key,
-    this.locationId,
-    this.initialQuery,
-    this.viewModel,
-  });
+  const FindPieceScreen({super.key, this.initialQuery, this.viewModel});
 
   @override
   State<FindPieceScreen> createState() => _FindPieceScreenState();
 }
 
 class _FindPieceScreenState extends State<FindPieceScreen> {
-  late final FindPieceViewModel _vm =
-      widget.viewModel ?? FindPieceViewModel(locationId: widget.locationId);
-  final _query = TextEditingController();
+  late final FindPieceViewModel _vm = widget.viewModel ?? FindPieceViewModel();
+  late final _query = TextEditingController(text: widget.initialQuery);
+  (int, String?)? _seen;
 
   @override
-  void initState() {
-    super.initState();
-    final q = widget.initialQuery;
-    if (q != null && q.isNotEmpty) {
-      _query.text = q;
-      _vm.search(q);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Searches the app's one store; the first time with the text it was opened with, later
+    // again whenever the store changes.
+    final shop = ShopScope.of(context);
+    final seen = (shop.revision, shop.selectedLocation?.id);
+    if (seen != _seen) {
+      _seen = seen;
+      _vm.locationId = shop.selectedLocation?.id;
+      _vm.search(_query.text);
     }
   }
 
@@ -807,22 +698,21 @@ class _FindPieceScreenState extends State<FindPieceScreen> {
   }
 
   Widget _buildScreen() {
+    final type = Theme.of(context).textTheme;
+    final store = ShopScope.of(context).selectedLocation;
     final results = _vm.results;
+    final error = _vm.error;
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: Column(
           children: [
             PageHeader(
               title: 'Where is it?',
-              subtitle: 'Search by name, SKU or barcode',
+              subtitle: 'Scan a price tag or type a name to find the shelf.',
               actions: [
                 IconButton(
                   tooltip: 'Scan its tag',
-                  icon: const Icon(
-                    Icons.qr_code_scanner_rounded,
-                    color: AppColors.accentGold,
-                  ),
+                  icon: const Icon(Icons.qr_code_scanner_rounded),
                   onPressed: () async {
                     final code = await showScanSheet(
                       context,
@@ -837,43 +727,66 @@ class _FindPieceScreenState extends State<FindPieceScreen> {
               ],
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
               child: SearchField(
                 controller: _query,
-                hint: 'e.g. red banarasi, SKU-104, 8901…',
+                hint: 'Scan a tag, or type saree, SKU, colour…',
                 onChanged: (v) {
                   setState(() {}); // shows or hides the clear button
                   _vm.typed(v);
                 },
               ),
             ),
-            if (_vm.loading)
-              const LinearProgressIndicator(
-                minHeight: 2,
-                color: AppColors.accentGold,
-                backgroundColor: Colors.transparent,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 16, 4),
+              child: CheckboxListTile(
+                value: _vm.everywhere,
+                onChanged: (v) => _vm.setEverywhere(v ?? false, _query.text),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(
+                  'Look in every location, not just ${store?.name ?? 'this one'}',
+                  style: type.bodySmall,
+                ),
               ),
+            ),
+            SizedBox(
+              height: 2,
+              child: _vm.loading
+                  ? const LinearProgressIndicator(
+                      minHeight: 2,
+                      backgroundColor: Colors.transparent,
+                    )
+                  : null,
+            ),
             Expanded(
-              child: _vm.error != null
-                  ? ErrorView(
-                      message: _vm.error!,
+              child: error != null
+                  ? ErrorView.fromError(
+                      error,
+                      what: 'the search results',
                       onRetry: () => _vm.search(_query.text),
                     )
                   : results == null
-                  ? const _Hint(
-                      icon: Icons.travel_explore_rounded,
-                      text: 'Type or scan to see which shelf a piece is on.',
+                  ? const EmptyState(
+                      Icons.search_rounded,
+                      'Find any piece in seconds',
+                      text:
+                          'Point the scanner at the price tag, or start typing. '
+                          'You will see every shelf holding it, with the shop floor first.',
                     )
                   : results.isEmpty
-                  ? const _Hint(
-                      icon: Icons.search_off_rounded,
-                      text: 'Nothing matches that.',
+                  ? EmptyState(
+                      Icons.inventory_2_outlined,
+                      'Nothing matches "${_vm.query}"',
+                      text:
+                          'Check the spelling, try the SKU or colour, or scan the tag.',
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                       itemCount: results.length,
                       itemBuilder: (_, i) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.only(bottom: 14),
                         child: _whereCard(results[i]).entrance(i),
                       ),
                     ),
@@ -885,107 +798,143 @@ class _FindPieceScreenState extends State<FindPieceScreen> {
   }
 
   Widget _whereCard(WhereItem w) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    final canMove = SessionScope.of(context).can('shelf:putaway');
     final places = _vm.placesOf(w);
     return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ItemRow(item: w.item, bare: true),
-          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              NetImage(url: w.item.imageUrl, width: 72, height: 72, radius: 10),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(w.item.title, style: type.titleMedium),
+                    Text(_detail(w.item), style: type.bodySmall),
+                    if (w.item.archived) ...[
+                      const SizedBox(height: 6),
+                      const StatusPill('Archived product', Tone.neutral),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           if (places.isEmpty)
-            const Text(
-              'None in stock anywhere.',
-              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-            )
+            Text('None in stock here.', style: type.bodySmall)
           else
             for (final p in places) ...[
               Row(
                 children: [
-                  const Icon(
-                    Icons.place_rounded,
-                    size: 14,
-                    color: AppColors.textMuted,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      p.location,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
+                  Icon(Icons.warehouse_outlined, size: 16, color: c.text),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(p.location, style: type.titleSmall)),
                   Text(
-                    '${p.total} pcs${p.held > 0 ? ' • ${p.held} held' : ''}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    '${pieces(p.total)} here${p.held > 0 ? ' · ${p.held} held for orders' : ''}',
+                    style: type.bodySmall,
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final sh in p.shelves)
-                    Pressable(
-                      onTap: () => AppRoutes.spot(context, sh.spotId),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.accentGoldLight,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.accentGoldBorder),
-                        ),
-                        child: Text(
-                          '${sh.name ?? sh.address}  ×${sh.quantity}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.accentGold,
+              for (final (i, sh) in p.shelves.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _shelfRow(sh, highlight: i == 0 && sh.isShopFloor),
+                ),
+              if (p.notShelved > 0)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: c.borderFocus),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: 'Not shelved',
+                                style: type.titleSmall,
+                              ),
+                              TextSpan(
+                                text: p.usesShelves
+                                    ? ' · not put on a shelf yet'
+                                    : ' · this location has no shelves set up',
+                                style: type.bodySmall,
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ),
-                  if (p.usesShelves && p.notShelved > 0)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.bgSurface,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${p.notShelved} not shelved',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textSecondary,
+                      const SizedBox(width: 8),
+                      Text(
+                        '${p.notShelved}',
+                        style: type.titleMedium!.copyWith(
+                          fontFeatures: _tabular,
                         ),
                       ),
-                    ),
-                  if (!p.usesShelves)
-                    const Text(
-                      'This store does not use shelves',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
+                      if (canMove && p.usesShelves) ...[
+                        const SizedBox(width: 8),
+                        OutlinedButton(
+                          onPressed: () => AppRoutes.waitingToShelve(
+                            context,
+                            locationId: p.locationId,
+                          ),
+                          child: const Text('Put away'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 6),
             ],
         ],
+      ),
+    );
+  }
+
+  /// One shelf holding the piece; the first, when it is on the shop floor, stands out.
+  Widget _shelfRow(ShelfPlace sh, {required bool highlight}) {
+    final c = context.colors;
+    return Pressable(
+      onTap: () => AppRoutes.spot(context, sh.spotId),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: highlight ? tint(c.success, 0.08) : c.input,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: highlight ? tint(c.success, 0.35) : c.border,
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: SpotChip(
+                address: sh.address,
+                name: sh.name,
+                colour: sh.colour,
+                isShopFloor: sh.isShopFloor,
+                big: true,
+              ),
+            ),
+            const SizedBox(width: 12),
+            BigQty('${sh.quantity}'),
+          ],
+        ),
       ),
     );
   }
@@ -1036,10 +985,7 @@ class _WaitingToShelveScreenState extends State<WaitingToShelveScreen> {
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
-      backgroundColor: AppColors.bgCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
+      showDragHandle: true,
       builder: (_) => _MoveSheet(
         item: n.item,
         locationId: widget.locationId,
@@ -1073,13 +1019,14 @@ class _WaitingToShelveScreenState extends State<WaitingToShelveScreen> {
   }
 
   Widget _buildScreen() {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     final items = _vm.items;
+    final error = _vm.error;
     final waiting = _vm.waiting;
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppColors.accentGold,
           onRefresh: _vm.load,
           child: ListView(
             padding: const EdgeInsets.only(bottom: 32),
@@ -1090,30 +1037,36 @@ class _WaitingToShelveScreenState extends State<WaitingToShelveScreen> {
                     : 'Put on ${widget.target!.name ?? widget.target!.address}',
                 subtitle: items == null
                     ? widget.locationName
-                    : '$waiting pieces in ${widget.locationName}',
+                    : '${pieces(waiting)} in ${widget.locationName}',
               ),
-              if (items == null && _vm.error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 80),
-                  child: ErrorView(message: _vm.error!, onRetry: _vm.load),
+              if (items == null && error != null)
+                ErrorView.fromError(
+                  error,
+                  what: 'the pieces waiting to be put away',
+                  onRetry: _vm.load,
                 )
               else if (items == null)
                 const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Skeleton(height: 240, radius: 20),
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Skeleton(height: 76),
+                      SizedBox(height: 10),
+                      Skeleton(height: 76),
+                    ],
+                  ),
                 )
               else if (items.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: _Note(
-                    icon: Icons.task_alt_rounded,
-                    text: 'Everything in this store is on a shelf.',
-                  ),
+                const EmptyState(
+                  Icons.task_alt_rounded,
+                  'Everything is on a shelf',
+                  text:
+                      'New stock, returns and transfers into this location will appear here.',
                 )
               else
                 for (final (i, n) in items.indexed)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                     child: _ItemRow(
                       item: n.item,
                       onTap: SessionScope.of(context).can('shelf:putaway')
@@ -1123,19 +1076,11 @@ class _WaitingToShelveScreenState extends State<WaitingToShelveScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(
-                            '${n.notShelved}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.accentGold,
-                            ),
-                          ),
+                          BigQty('${n.notShelved}'),
                           Text(
                             'of ${n.total}',
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: AppColors.textMuted,
+                            style: type.labelMedium!.copyWith(
+                              color: c.textMuted,
                             ),
                           ),
                         ],
@@ -1210,6 +1155,7 @@ class _MoveSheetState extends State<_MoveSheet> {
   }
 
   Widget _buildSheet() {
+    final type = Theme.of(context).textTheme;
     final spots = _vm.spots;
     final to = _vm.to;
     return Padding(
@@ -1224,29 +1170,15 @@ class _MoveSheetState extends State<_MoveSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 10),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.borderLight,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: _ItemRow(item: widget.item, bare: true),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   children: [
-                    const Text(
-                      'How many?',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
+                    Text('How many?', style: type.titleSmall),
                     const Spacer(),
                     QuantityStepper(
                       value: _vm.qty,
@@ -1260,13 +1192,10 @@ class _MoveSheetState extends State<_MoveSheet> {
               const SizedBox(height: 12),
               if (widget.fixedTarget == null) ...[
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
                     children: [
-                      const Text(
-                        'To which shelf?',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
+                      Text('To which shelf?', style: type.titleSmall),
                       const Spacer(),
                       TextButton.icon(
                         onPressed: _scan,
@@ -1280,65 +1209,41 @@ class _MoveSheetState extends State<_MoveSheet> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: TextField(
                     onChanged: _vm.setFilter,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       isDense: true,
-                      filled: true,
-                      fillColor: AppColors.bgSurface,
                       hintText: 'Filter shelves',
-                      prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
+                      prefixIcon: Icon(Icons.search_rounded, size: 18),
                     ),
                   ),
                 ),
                 Expanded(
                   child: _vm.loadingSpots
-                      ? const Center(
-                          child: CircularProgressIndicator(
-                            color: AppColors.accentGold,
-                          ),
-                        )
+                      ? const Center(child: CircularProgressIndicator())
                       : RadioGroup<String>(
                           groupValue: _vm.offShelf ? '__off__' : to?.id,
                           onChanged: (v) => v == '__off__'
                               ? _vm.takeOffShelf()
                               : _vm.choose(spots.firstWhere((s) => s.id == v)),
                           child: ListView(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
                             children: [
                               if (!widget.requireTarget)
-                                RadioListTile<String>(
+                                const RadioListTile<String>(
                                   value: '__off__',
-                                  activeColor: AppColors.accentGold,
-                                  title: const Text(
-                                    'Off the shelf',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  subtitle: const Text(
-                                    'Back to "Not shelved"',
-                                    style: TextStyle(fontSize: 11),
-                                  ),
+                                  title: Text('Off the shelf'),
+                                  subtitle: Text('Back to "Not shelved"'),
                                 ),
                               for (final s in spots)
                                 RadioListTile<String>(
                                   value: s.id,
-                                  activeColor: AppColors.accentGold,
-                                  title: Text(
-                                    s.title,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
+                                  title: s.name == null
+                                      ? ShelfAddress(s.address)
+                                      : Text(s.name!),
                                   subtitle: Text(
-                                    '${s.address} • ${s.pieces} pcs now',
-                                    style: const TextStyle(fontSize: 11),
+                                    '${s.address} · ${pieces(s.pieces)} now',
                                   ),
                                 ),
                             ],
@@ -1347,39 +1252,30 @@ class _MoveSheetState extends State<_MoveSheet> {
                 ),
               ] else ...[
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
                     'Onto ${widget.fixedTarget!.name ?? widget.fixedTarget!.address}',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w600,
+                    style: type.bodyMedium!.copyWith(
+                      color: context.colors.textSecondary,
                     ),
                   ),
                 ),
                 const Spacer(),
               ],
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: _vm.ready
                         ? () => Navigator.of(context).pop(_vm.result)
                         : null,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.accentGold,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
                     child: Text(
                       _vm.offShelf
                           ? 'Take ${_vm.qty} off'
                           : (to == null
                                 ? 'Choose a shelf'
                                 : 'Move ${_vm.qty} to ${to.title}'),
-                      style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                   ),
                 ),
@@ -1394,6 +1290,7 @@ class _MoveSheetState extends State<_MoveSheet> {
 
 // ---- Small pieces ---------------------------------------------------------------------------------
 
+/// A piece as a website phone list row: thumbnail, title, detail.
 class _ItemRow extends StatelessWidget {
   final ShelfItem item;
   final Widget? trailing;
@@ -1409,9 +1306,10 @@ class _ItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final type = Theme.of(context).textTheme;
     final content = Row(
       children: [
-        NetImage(url: item.imageUrl, width: 52, height: 52, radius: 14),
+        NetImage(url: item.imageUrl, width: 48, height: 48, radius: 10),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -1421,30 +1319,19 @@ class _ItemRow extends StatelessWidget {
                 item.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: type.titleSmall,
               ),
               const SizedBox(height: 2),
               Text(
-                [if (item.label.isNotEmpty) item.label, item.sku].join(' • '),
+                _detail(item),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textMuted,
-                ),
+                style: type.bodySmall,
               ),
-              if (item.archived)
-                const Text(
-                  'Archived product',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: AppColors.accentWarning,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+              if (item.archived) ...[
+                const SizedBox(height: 4),
+                const StatusPill('Archived product', Tone.neutral),
+              ],
             ],
           ),
         ),
@@ -1453,67 +1340,9 @@ class _ItemRow extends StatelessWidget {
     );
     if (bare) return content;
     return SurfaceCard(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       onTap: onTap,
       child: content,
     );
   }
-}
-
-class _Note extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _Note({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) => SurfaceCard(
-    child: Row(
-      children: [
-        Icon(icon, color: AppColors.accentGold),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
-              height: 1.35,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _Hint extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _Hint({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 52,
-            color: AppColors.accentGold.withValues(alpha: 0.4),
-          ).animate().scale(curve: Curves.easeOutBack),
-          const SizedBox(height: 12),
-          Text(
-            text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 }
