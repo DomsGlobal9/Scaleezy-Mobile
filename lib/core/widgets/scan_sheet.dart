@@ -83,12 +83,13 @@ class _ScanSheetState extends State<_ScanSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final c = context.colors;
     return Container(
       height: MediaQuery.of(context).size.height * 0.78 + bottom,
       padding: EdgeInsets.only(bottom: bottom),
-      decoration: const BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: SafeArea(
         top: false,
@@ -99,7 +100,7 @@ class _ScanSheetState extends State<_ScanSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: AppColors.borderLight,
+                color: c.borderFocus,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -110,22 +111,13 @@ class _ScanSheetState extends State<_ScanSheet> {
                   Expanded(
                     child: Text(
                       widget.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
                   if (_continuous)
                     FilledButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.textPrimary,
-                      ),
-                      child: const Text(
-                        'Done',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
+                      child: const Text('Done'),
                     )
                   else
                     IconButton(
@@ -139,7 +131,7 @@ class _ScanSheetState extends State<_ScanSheet> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(12),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -176,9 +168,9 @@ class _ScanSheetState extends State<_ScanSheet> {
                                   width: 240,
                                   height: 150,
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(18),
+                                    borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: const Color(0xFFFDE68A),
+                                      color: c.brand,
                                       width: 2.5,
                                     ),
                                   ),
@@ -229,16 +221,16 @@ class _ScanSheetState extends State<_ScanSheet> {
                                       vertical: 10,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(14),
+                                      color: c.card,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: c.border),
                                     ),
                                     child: Text(
                                       _flash!,
                                       textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 13,
-                                      ),
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleSmall,
                                     ),
                                   )
                                   .animate(key: ValueKey(_flashId))
@@ -266,28 +258,18 @@ class _ScanSheetState extends State<_ScanSheet> {
                   _handle(v);
                   _typed.clear();
                 },
+                // Fill, radius and borders come from the theme's input decoration.
                 decoration: InputDecoration(
-                  isDense: true,
-                  filled: true,
-                  fillColor: AppColors.bgSurface,
                   hintText: 'Or type the code',
                   prefixIcon: const Icon(Icons.keyboard_rounded, size: 20),
                   suffixIcon: IconButton(
-                    icon: const Icon(
-                      Icons.arrow_forward_rounded,
-                      color: AppColors.accentGold,
-                    ),
+                    icon: Icon(Icons.arrow_forward_rounded, color: c.brandInk),
                     onPressed: () {
                       _last = null;
                       _handle(_typed.text);
                       _typed.clear();
                     },
                   ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
             ),
