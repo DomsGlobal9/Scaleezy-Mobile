@@ -137,6 +137,10 @@ class FakeShopContext extends ShopContext {
 
   @override
   List<StockLocation> get locations => _locations;
+
+  /// The app-wide store: the first, as the real one picks MAIN-STORE or the first.
+  @override
+  StockLocation? get selectedLocation => _locations.firstOrNull;
 }
 
 /// Answers with the given functions and records each call, in order.

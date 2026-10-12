@@ -7,8 +7,10 @@ import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
 import 'package:scaleezy/core/shop/shop_models.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/core/utils/labels.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/core/widgets/scan_sheet.dart';
+import 'package:scaleezy/core/widgets/status_pill.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/stock_counts/data/stock_count_models.dart';
 import 'package:scaleezy/features/stock_counts/presentation/view_models/stock_count_view_model.dart';
@@ -22,58 +24,25 @@ String _lines(int n) => '$n ${n == 1 ? 'line' : 'lines'}';
 String? _storeName(BuildContext context, String? id) =>
     ShopScope.of(context).locations.where((l) => l.id == id).firstOrNull?.name;
 
-Widget _statusChip(String status) {
-  final (fg, bg) = switch (status) {
-    'IN_PROGRESS' => (AppColors.accentWarning, AppColors.accentGoldLight),
-    'COMPLETED' => (AppColors.accentSuccess, AppColors.accentSuccessLight),
-    'CANCELLED' => (AppColors.accentDanger, AppColors.accentDangerLight),
-    _ => (AppColors.textSecondary, AppColors.bgSurface),
-  };
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-    decoration: BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(6),
-    ),
-    child: Text(
-      status.replaceAll('_', ' '),
-      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: fg),
-    ),
-  );
+Widget _statusPill(String status) {
+  final look = describeStatus(stockCountStatuses, status);
+  return StatusPill(look.label, look.tone);
 }
 
-Widget _choice(String label, bool selected, VoidCallback onTap) => Padding(
-  padding: const EdgeInsets.only(right: 8, bottom: 8),
-  child: ChoiceChip(
-    label: Text(label),
-    selected: selected,
-    showCheckmark: false,
-    selectedColor: AppColors.textPrimary,
-    backgroundColor: AppColors.bgSurface,
-    side: BorderSide.none,
-    labelStyle: TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.w700,
-      color: selected ? Colors.white : AppColors.textSecondary,
-    ),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    onSelected: (_) => onTap(),
-  ),
-);
+/// The web's rule: 95% or better reads as good.
+Color _accuracyColour(BuildContext context, double accuracy) =>
+    accuracy >= 95 ? context.colors.success : context.colors.danger;
 
-Widget _busyLabel(bool busy, String label) => busy
-    ? const SizedBox(
+Widget _busyLabel(BuildContext context, bool busy, String label) => busy
+    ? SizedBox(
         width: 20,
         height: 20,
-        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+        child: CircularProgressIndicator(
+          strokeWidth: 2.5,
+          color: context.colors.card,
+        ),
       )
-    : Text(label, style: const TextStyle(fontWeight: FontWeight.w800));
-
-ButtonStyle _bigButton(Color colour) => FilledButton.styleFrom(
-  backgroundColor: colour,
-  padding: const EdgeInsets.symmetric(vertical: 16),
-  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-);
+    : Text(label);
 
 /// Every stock count, newest first, and starting a new one.
 class StockCountsScreen extends StatefulWidget {
@@ -103,23 +72,13 @@ class _StockCountsScreenState extends State<StockCountsScreen> {
   }
 
   Future<void> _new() async {
-    final shop = ShopScope.read(context);
+    // The count is of the store the whole app is on, as the web's New Audit.
+    final store = ShopScope.read(context).selectedLocation;
     final created = await showModalBottomSheet<bool>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
-      backgroundColor: AppColors.bgCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
-      builder: (_) => _NewCountSheet(
-        vm: _vm,
-        stores: shop.locations,
-        initial: StockCountsViewModel.defaultStore(
-          shop.selectedLocation,
-          shop.locations,
-        ),
-      ),
+      builder: (_) => _NewCountSheet(vm: _vm, store: store),
     );
     if (created == true && mounted) _open(_vm.created!.id);
   }
@@ -141,17 +100,11 @@ class _StockCountsScreenState extends State<StockCountsScreen> {
     final list = _vm.counts;
     final error = _vm.error;
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       floatingActionButton: SessionScope.of(context).can('stock_count:create')
           ? FloatingActionButton.extended(
               onPressed: _new,
-              backgroundColor: AppColors.accentGold,
-              foregroundColor: Colors.white,
               icon: const Icon(Icons.add_rounded),
-              label: const Text(
-                'New count',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
+              label: const Text('New count'),
             )
           : null,
       body: SafeArea(
@@ -163,28 +116,33 @@ class _StockCountsScreenState extends State<StockCountsScreen> {
             ),
             Expanded(
               child: list == null && error != null
-                  ? ErrorView(message: error, onRetry: _vm.load)
+                  ? ErrorView.fromError(
+                      error,
+                      what: 'audits',
+                      onRetry: _vm.load,
+                    )
                   : list == null
                   ? ListView(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: [
                         for (var i = 0; i < 5; i++)
                           const Padding(
                             padding: EdgeInsets.only(bottom: 10),
-                            child: Skeleton(height: 90, radius: 18),
+                            child: Skeleton(height: 90, radius: 12),
                           ),
                       ],
                     )
                   : list.isEmpty
-                  ? const ErrorView(
-                      message:
-                          'No stock counts yet. Start one to check what is on the shelves against the stock on record.',
+                  ? const EmptyState(
+                      Icons.assignment_outlined,
+                      'No audits found',
+                      text:
+                          'Start your first stock count to ensure inventory accuracy.',
                     )
                   : RefreshIndicator(
-                      color: AppColors.accentGold,
                       onRefresh: _vm.load,
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 96),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                         itemCount: list.length,
                         itemBuilder: (_, i) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),
@@ -200,26 +158,20 @@ class _StockCountsScreenState extends State<StockCountsScreen> {
   }
 
   Widget _card(StockCount c) {
+    final type = Theme.of(context).textTheme;
     final counted = c.countedItems;
     final accuracy = c.accuracy;
     return SurfaceCard(
+      padding: const EdgeInsets.all(14),
       onTap: () => _open(c.id),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  c.name,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
+              Expanded(child: Text(c.name, style: type.titleSmall)),
               const SizedBox(width: 8),
-              _statusChip(c.status),
+              _statusPill(c.status),
             ],
           ),
           const SizedBox(height: 2),
@@ -228,7 +180,7 @@ class _StockCountsScreenState extends State<StockCountsScreen> {
               ?_storeName(context, c.locationId),
               'made ${_date.format(c.createdAt)}',
             ].join(' • '),
-            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+            style: type.labelMedium!.copyWith(color: context.colors.textMuted),
           ),
           const SizedBox(height: 8),
           Row(
@@ -238,22 +190,14 @@ class _StockCountsScreenState extends State<StockCountsScreen> {
                   counted != null
                       ? '$counted of ${c.itemCount} counted'
                       : '${c.itemCount} ${c.itemCount == 1 ? 'item' : 'items'}${c.isOpen ? ' to count' : ''}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary,
-                  ),
+                  style: type.bodySmall,
                 ),
               ),
               if (accuracy != null)
                 Text(
                   '${accuracy.toStringAsFixed(1)}% matched',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: accuracy >= 95
-                        ? AppColors.accentSuccess
-                        : AppColors.accentDanger,
+                  style: type.labelMedium!.copyWith(
+                    color: _accuracyColour(context, accuracy),
                   ),
                 ),
             ],
@@ -264,14 +208,13 @@ class _StockCountsScreenState extends State<StockCountsScreen> {
   }
 }
 
-/// Name, store and (optionally) one category. The draft stays here; the list's view model
-/// makes the count.
+/// Name and (optionally) one category; the store is the one the app is on. The draft stays
+/// here; the list's view model makes the count.
 class _NewCountSheet extends StatefulWidget {
   final StockCountsViewModel vm;
-  final List<StockLocation> stores;
-  final StockLocation? initial;
+  final StockLocation? store;
 
-  const _NewCountSheet({required this.vm, required this.stores, this.initial});
+  const _NewCountSheet({required this.vm, required this.store});
 
   @override
   State<_NewCountSheet> createState() => _NewCountSheetState();
@@ -282,7 +225,6 @@ class _NewCountSheetState extends State<_NewCountSheet> {
   final _name = TextEditingController(
     text: '${DateFormat('MMMM yyyy').format(DateTime.now())} Full Count',
   );
-  late StockLocation? _store = widget.initial;
   String? _category;
 
   @override
@@ -295,7 +237,7 @@ class _NewCountSheetState extends State<_NewCountSheet> {
     if (!_form.currentState!.validate()) return;
     final error = await widget.vm.create(
       name: _name.text,
-      locationId: _store!.id,
+      locationId: widget.store!.id,
       category: _category,
     );
     // A failure shows inside the sheet (vm.createError).
@@ -311,17 +253,15 @@ class _NewCountSheetState extends State<_NewCountSheet> {
   }
 
   Widget _buildForm() {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     final error = widget.vm.createError;
-    const label = TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.w800,
-      color: AppColors.textSecondary,
-    );
+    final store = widget.store;
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
-        20,
         16,
-        20,
+        16,
+        16,
         MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: Form(
@@ -330,84 +270,71 @@ class _NewCountSheetState extends State<_NewCountSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'New count',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-            ),
+            Text('New count', style: type.titleLarge),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Every piece on sale is listed with the stock on record. Count what is really there, '
               'then finish the count to correct the stock.',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              style: type.bodySmall,
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _name,
               textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Name',
-                prefixIcon: const Icon(Icons.edit_note_rounded, size: 20),
-                filled: true,
-                fillColor: AppColors.bgSurface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
+                prefixIcon: Icon(Icons.edit_note_rounded, size: 20),
               ),
               validator: (v) =>
                   (v ?? '').trim().isEmpty ? 'Give the count a name.' : null,
             ),
             const SizedBox(height: 16),
-            if (widget.stores.isEmpty)
-              const Text(
+            if (store == null)
+              Text(
                 'No store is set up yet, so there is nothing to count.',
-                style: TextStyle(
-                  color: AppColors.accentDanger,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: type.bodySmall!.copyWith(color: c.danger),
               )
-            else if (widget.stores.length > 1) ...[
-              const Text('Store', style: label),
-              const SizedBox(height: 8),
-              Wrap(
+            else
+              Row(
                 children: [
-                  for (final s in widget.stores)
-                    _choice(
-                      s.name,
-                      s.id == _store?.id,
-                      () => setState(() => _store = s),
+                  Icon(
+                    Icons.storefront_outlined,
+                    size: 18,
+                    color: c.textSecondary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Counts the stock at ${store.name}',
+                      style: type.bodySmall,
                     ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-            ],
-            const Text('What to count', style: label),
+            const SizedBox(height: 16),
+            Text('WHAT TO COUNT', style: type.labelSmall),
             const SizedBox(height: 8),
             Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 for (final e in StockCountsViewModel.categories.entries)
-                  _choice(
-                    e.value,
-                    e.key == _category,
-                    () => setState(() => _category = e.key),
+                  ChoiceChip(
+                    label: Text(e.value),
+                    selected: e.key == _category,
+                    showCheckmark: false,
+                    onSelected: (_) => setState(() => _category = e.key),
                   ),
               ],
             ),
             if (error != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                error,
-                style: const TextStyle(
-                  color: AppColors.accentDanger,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              const SizedBox(height: 12),
+              Text(error, style: type.bodySmall!.copyWith(color: c.danger)),
             ],
             const SizedBox(height: 16),
             FilledButton(
-              onPressed: widget.vm.creating || _store == null ? null : _save,
-              style: _bigButton(AppColors.accentGold),
-              child: _busyLabel(widget.vm.creating, 'Create count'),
+              onPressed: widget.vm.creating || store == null ? null : _save,
+              child: _busyLabel(context, widget.vm.creating, 'Create count'),
             ),
           ],
         ),
@@ -454,14 +381,14 @@ class _StockCountScreenState extends State<StockCountScreen> {
     final code = await showScanSheet(
       context,
       title: 'Scan a piece',
-      hint: 'Point the camera at the tag',
+      hint: 'Point at the barcode',
     );
     if (code == null || !mounted) return;
     final line = _vm.find(code);
     if (line == null) {
       showMessage(
         context,
-        'No item in this count matches "${code.trim()}".',
+        'No item in this audit matches "${code.trim()}".',
         error: true,
       );
       return;
@@ -473,10 +400,6 @@ class _StockCountScreenState extends State<StockCountScreen> {
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
-    backgroundColor: AppColors.bgCard,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-    ),
     builder: (_) => _CountSheet(vm: _vm, line: line),
   );
 
@@ -488,7 +411,12 @@ class _StockCountScreenState extends State<StockCountScreen> {
   Future<void> _start() async {
     final error = await _vm.start();
     if (!mounted) return;
-    if (error != null) showMessage(context, error, error: true);
+    showMessage(
+      context,
+      error ?? 'Stock count started',
+      error: error != null,
+      success: error == null,
+    );
   }
 
   Future<void> _complete() async {
@@ -546,6 +474,7 @@ class _StockCountScreenState extends State<StockCountScreen> {
       context,
       error ?? 'Count cancelled. No stock was changed.',
       error: error != null,
+      success: error == null,
     );
   }
 
@@ -564,7 +493,6 @@ class _StockCountScreenState extends State<StockCountScreen> {
     final visible = _vm.visible;
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       bottomNavigationBar: c == null ? null : _bottomBar(session),
       body: SafeArea(
         child: Column(
@@ -577,42 +505,42 @@ class _StockCountScreenState extends State<StockCountScreen> {
                   TextButton(
                     onPressed: _vm.busy ? null : _cancel,
                     style: TextButton.styleFrom(
-                      foregroundColor: AppColors.accentDanger,
+                      foregroundColor: context.colors.danger,
                     ),
-                    child: const Text(
-                      'Cancel count',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
+                    child: const Text('Cancel count'),
                   ),
               ],
             ),
             Expanded(
               child: c == null && error != null
-                  ? ErrorView(message: error, onRetry: _vm.load)
+                  ? ErrorView.fromError(
+                      error,
+                      what: 'this audit',
+                      onRetry: _vm.load,
+                    )
                   : c == null
                   ? const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20),
+                      padding: EdgeInsets.symmetric(horizontal: 16),
                       child: Column(
                         children: [
-                          Skeleton(height: 140, radius: 22),
+                          Skeleton(height: 140, radius: 12),
                           SizedBox(height: 16),
-                          Skeleton(height: 70, radius: 18),
-                          SizedBox(height: 8),
-                          Skeleton(height: 70, radius: 18),
+                          Skeleton(height: 70, radius: 12),
+                          SizedBox(height: 10),
+                          Skeleton(height: 70, radius: 12),
                         ],
                       ),
                     )
                   : RefreshIndicator(
-                      color: AppColors.accentGold,
                       onRefresh: _vm.load,
                       // Every variant of the shop can be a line: built as they scroll into view.
                       child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                         itemCount: visible.length + 1,
                         itemBuilder: (_, i) => i == 0
                             ? _top(c, visible.isEmpty)
                             : Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.only(bottom: 10),
                                 child: _line(
                                   visible[i - 1],
                                   session,
@@ -636,44 +564,38 @@ class _StockCountScreenState extends State<StockCountScreen> {
     final finish = FilledButton(
       // Not while a number is still on its way: finishing uses the server's.
       onPressed: _vm.busy || _vm.anySaving ? null : _complete,
-      style: _bigButton(AppColors.accentSuccess).copyWith(
-        padding: const WidgetStatePropertyAll(
-          EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-        ),
-      ),
-      child: _busyLabel(_vm.busy, 'Finish count'),
+      child: _busyLabel(context, _vm.busy, 'Finish count'),
     );
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-        child: canStart
-            ? FilledButton.icon(
-                onPressed: _vm.busy ? null : _start,
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: _busyLabel(_vm.busy, 'Start counting'),
-                style: _bigButton(AppColors.accentGold),
-              )
-            : Row(
-                children: [
-                  if (canScan)
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _scan,
-                        icon: const Icon(Icons.qr_code_scanner_rounded),
-                        label: const Text(
-                          'Scan',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
+    final c = context.colors;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.card,
+        border: Border(top: BorderSide(color: c.border)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: canStart
+              ? FilledButton.icon(
+                  onPressed: _vm.busy ? null : _start,
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: _busyLabel(context, _vm.busy, 'Start counting'),
+                )
+              : Row(
+                  children: [
+                    if (canScan)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _scan,
+                          icon: const Icon(Icons.qr_code_scanner_rounded),
+                          label: const Text('Scan'),
                         ),
-                        style: _bigButton(AppColors.accentGold),
                       ),
-                    ),
-                  if (canScan && canFinish) const SizedBox(width: 10),
-                  if (canFinish) canScan ? finish : Expanded(child: finish),
-                ],
-              ),
+                    if (canScan && canFinish) const SizedBox(width: 10),
+                    if (canFinish) Expanded(child: finish),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -698,34 +620,11 @@ class _StockCountScreenState extends State<StockCountScreen> {
               for (final e in StockCountViewModel.filters.entries)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: Pressable(
-                    onTap: () => _vm.selectFilter(e.key),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: _vm.filter == e.key
-                            ? AppColors.textPrimary
-                            : AppColors.bgCard,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _vm.filter == e.key
-                              ? AppColors.textPrimary
-                              : AppColors.borderLight,
-                        ),
-                      ),
-                      child: Text(
-                        '${e.value}  ${_vm.countOf(e.key)}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: _vm.filter == e.key
-                              ? Colors.white
-                              : AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
+                  child: ChoiceChip(
+                    label: Text('${e.value}  ${_vm.countOf(e.key)}'),
+                    selected: _vm.filter == e.key,
+                    showCheckmark: false,
+                    onSelected: (_) => _vm.selectFilter(e.key),
                   ),
                 ),
             ],
@@ -744,9 +643,8 @@ class _StockCountScreenState extends State<StockCountScreen> {
                   ? 'No differences so far.'
                   : 'This count has no lines.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                color: context.colors.textSecondary,
               ),
             ),
           ),
@@ -755,31 +653,21 @@ class _StockCountScreenState extends State<StockCountScreen> {
   }
 
   Widget _summary(StockCount c) {
-    const note = TextStyle(
-      fontSize: 12,
-      color: AppColors.textSecondary,
-      fontWeight: FontWeight.w600,
-      height: 1.4,
-    );
-    Widget big(String value, String rest) => Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    final colours = context.colors;
+    final type = Theme.of(context).textTheme;
+    final note = type.bodySmall!.copyWith(height: 1.4);
+    Widget big(String value, String rest, [Color? colour]) => Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
       children: [
         Text(
           value,
-          style: const TextStyle(
-            fontSize: 30,
-            fontWeight: FontWeight.w900,
-            height: 1,
+          style: type.headlineSmall!.copyWith(
+            color: colour,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
-        Text(
-          rest,
-          style: const TextStyle(
-            fontSize: 13,
-            color: AppColors.textSecondary,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        Text(rest, style: type.bodySmall),
       ],
     );
     final total = _vm.total;
@@ -791,14 +679,11 @@ class _StockCountScreenState extends State<StockCountScreen> {
         children: [
           Row(
             children: [
-              _statusChip(c.status),
+              _statusPill(c.status),
               const Spacer(),
               Text(
                 'made ${_date.format(c.createdAt)}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textMuted,
-                ),
+                style: type.labelMedium!.copyWith(color: colours.textMuted),
               ),
             ],
           ),
@@ -808,9 +693,10 @@ class _StockCountScreenState extends State<StockCountScreen> {
               big(
                 '${c.accuracy!.toStringAsFixed(1)}%',
                 ' of counted lines matched',
+                _accuracyColour(context, c.accuracy!),
               )
             else
-              const Text('Nothing was counted.', style: note),
+              Text('Nothing was counted.', style: note),
             const SizedBox(height: 8),
             Text(
               [
@@ -836,9 +722,9 @@ class _StockCountScreenState extends State<StockCountScreen> {
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
                 value: total == 0 ? 0 : counted / total,
-                minHeight: 10,
-                backgroundColor: AppColors.bgSurface,
-                color: AppColors.accentSuccess,
+                minHeight: 8,
+                backgroundColor: colours.input,
+                color: colours.success,
               ),
             ),
             const SizedBox(height: 8),
@@ -857,6 +743,9 @@ class _StockCountScreenState extends State<StockCountScreen> {
   }
 
   Widget _line(StockCountItem l, AuthSession session) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    final muted = type.labelMedium!.copyWith(color: c.textMuted);
     final diff = l.difference;
     final problem = _vm.lineError(l.id);
     final saving = _vm.isSaving(l.id);
@@ -873,26 +762,13 @@ class _StockCountScreenState extends State<StockCountScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      l.title,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    Text(
-                      [l.sku, ?l.barcode].join(' • '),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
+                    Text(l.title, style: type.titleSmall),
+                    Text([l.sku, ?l.barcode].join(' • '), style: muted),
                     // The shop keeps selling during a count.
                     if (_vm.counting && l.onHand != l.expected)
                       Text(
                         'Now ${l.onHand} in stock',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.accentWarning,
-                        ),
+                        style: type.labelMedium!.copyWith(color: c.warning),
                       ),
                   ],
                 ),
@@ -904,23 +780,12 @@ class _StockCountScreenState extends State<StockCountScreen> {
                   Text(
                     l.counted == null ? 'not counted' : '${l.counted}',
                     style: l.counted == null
-                        ? const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textMuted,
-                          )
-                        : const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
+                        ? muted
+                        : type.titleMedium!.copyWith(
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                   ),
-                  Text(
-                    'expected ${l.expected}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
+                  Text('expected ${l.expected}', style: muted),
                 ],
               ),
               if (diff != null) ...[
@@ -928,28 +793,22 @@ class _StockCountScreenState extends State<StockCountScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
-                    vertical: 4,
+                    vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: diff == 0
-                        ? AppColors.accentSuccessLight
-                        : AppColors.accentDangerLight,
+                    color: tint(diff == 0 ? c.success : c.danger),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: diff == 0
-                      ? const Icon(
+                      ? Icon(
                           Icons.check_rounded,
                           size: 16,
-                          color: AppColors.accentSuccess,
+                          color: c.success,
                           semanticLabel: 'Matches',
                         )
                       : Text(
                           diff > 0 ? '+$diff' : '$diff',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.accentDanger,
-                          ),
+                          style: type.labelMedium!.copyWith(color: c.danger),
                         ),
                 ),
               ],
@@ -964,23 +823,23 @@ class _StockCountScreenState extends State<StockCountScreen> {
                       height: 40,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: AppColors.accentGoldLight,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.accentGoldBorder),
+                        color: c.input,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: c.border),
                       ),
                       child: saving
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 16,
                               height: 16,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: AppColors.accentGold,
+                                color: c.textSecondary,
                               ),
                             )
-                          : const Icon(
+                          : Icon(
                               Icons.exposure_plus_1_rounded,
                               size: 20,
-                              color: AppColors.accentGold,
+                              color: c.text,
                             ),
                     ),
                   ),
@@ -990,14 +849,7 @@ class _StockCountScreenState extends State<StockCountScreen> {
           ),
           if (problem != null) ...[
             const SizedBox(height: 6),
-            Text(
-              problem,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppColors.accentDanger,
-              ),
-            ),
+            Text(problem, style: type.labelMedium!.copyWith(color: c.danger)),
           ],
         ],
       ),
@@ -1044,38 +896,30 @@ class _CountSheetState extends State<_CountSheet> {
   }
 
   Widget _buildSheet() {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     final l = widget.line;
     final saving = widget.vm.isSaving(l.id);
     final error = widget.vm.lineError(l.id);
     final value = _value;
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
-        20,
         16,
-        20,
+        16,
+        16,
         MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            l.title,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-          ),
+          Text(l.title, style: type.titleLarge),
           Text(
             [l.sku, ?l.barcode].join(' • '),
-            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+            style: type.labelMedium!.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: 6),
-          Text(
-            'Expected ${l.expected} on the books',
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textSecondary,
-            ),
-          ),
+          Text('Expected ${l.expected} on the books', style: type.bodySmall),
           const SizedBox(height: 16),
           Center(
             child: QuantityStepper(
@@ -1090,35 +934,18 @@ class _CountSheetState extends State<_CountSheet> {
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+            style: type.titleLarge!.copyWith(
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
             onChanged: (_) => setState(() {}),
             onSubmitted: (_) {
               if (_value != null && !saving) _save(_value);
             },
-            decoration: InputDecoration(
-              hintText: 'Pieces counted',
-              hintStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textMuted,
-              ),
-              filled: true,
-              fillColor: AppColors.bgSurface,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
-            ),
+            decoration: const InputDecoration(hintText: 'Pieces counted'),
           ),
           if (error != null) ...[
             const SizedBox(height: 10),
-            Text(
-              error,
-              style: const TextStyle(
-                color: AppColors.accentDanger,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text(error, style: type.bodySmall!.copyWith(color: c.danger)),
           ],
           const SizedBox(height: 16),
           Row(
@@ -1126,10 +953,7 @@ class _CountSheetState extends State<_CountSheet> {
               if (l.counted != null) ...[
                 TextButton(
                   onPressed: saving ? null : () => _save(null),
-                  child: const Text(
-                    'Not counted',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
+                  child: const Text('Not counted'),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -1138,8 +962,8 @@ class _CountSheetState extends State<_CountSheet> {
                   onPressed: saving || value == null
                       ? null
                       : () => _save(value),
-                  style: _bigButton(AppColors.accentGold),
                   child: _busyLabel(
+                    context,
                     saving,
                     value == null ? 'Type the count' : 'Save: $value counted',
                   ),

@@ -44,10 +44,11 @@ void main() {
     final repo = FakeInventoryRepository();
     final vm = movement(repo, isStockIn: false);
     expect(vm.reasons, ['DAMAGE', 'SAMPLE', 'RETURN_TO_VENDOR']);
-    expect(vm.reason, 'DAMAGE');
-    vm
-      ..quantity = '2'
-      ..reason = 'SAMPLE';
+    expect(vm.reason, isNull);
+    vm.quantity = '2';
+    expect(await vm.save(), StockMovementViewModel.noReasonMessage);
+    expect(repo.calls, isEmpty);
+    vm.reason = 'SAMPLE';
 
     expect(await vm.save(), isNull);
     expect(repo.calls.single, {
@@ -76,10 +77,20 @@ void main() {
     expect(vm.busy, isFalse);
   });
 
+  test('what you paid goes to the paisa, no further', () async {
+    final repo = FakeInventoryRepository();
+    final vm = movement(repo)..cost = '1499.999';
+    expect(await vm.save(), StockMovementViewModel.paisaMessage);
+    expect(repo.calls, isEmpty);
+    vm.cost = '1499.50';
+    expect(await vm.save(), isNull);
+    expect(repo.calls.single['unitCost'], 1499.5);
+  });
+
   test('a server error is returned and the form stays usable', () async {
     final repo = FakeInventoryRepository()
       ..fail = const ApiException('Not enough stock');
-    final vm = movement(repo, isStockIn: false);
+    final vm = movement(repo, isStockIn: false)..reason = 'DAMAGE';
 
     expect(await vm.save(), 'Not enough stock');
     expect(vm.error, 'Not enough stock');

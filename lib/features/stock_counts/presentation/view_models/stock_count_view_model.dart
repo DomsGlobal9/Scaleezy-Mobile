@@ -23,7 +23,7 @@ class StockCountViewModel extends ViewModel {
   StockCount? _count;
   List<StockCountItem> _lines = const [];
   Map<String, int> _index = const {};
-  String? _error;
+  ApiException? _error;
   String _filter = 'ALL';
   String _query = '';
   bool _busy = false;
@@ -37,7 +37,9 @@ class StockCountViewModel extends ViewModel {
   /// Null until the first load arrives.
   StockCount? get count => _count;
   List<StockCountItem> get lines => _lines;
-  String? get error => _error;
+
+  /// Why the last load failed; a 403 shows as no access.
+  ApiException? get error => _error;
   String get filter => _filter;
   String get query => _query;
 
@@ -99,7 +101,7 @@ class StockCountViewModel extends ViewModel {
       _lines = detail.items;
       _index = {for (final (i, l) in _lines.indexed) l.id: i};
     } on ApiException catch (e) {
-      _error = e.message;
+      _error = e;
     }
     _changed();
   }

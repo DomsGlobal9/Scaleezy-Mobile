@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/shop/shop_context.dart';
+import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/core/widgets/no_access_screen.dart';
 import 'package:scaleezy/features/stock_counts/presentation/stock_counts_screen.dart';
 import 'package:scaleezy/features/stock_counts/presentation/view_models/stock_count_view_model.dart';
 import 'package:scaleezy/features/stock_counts/presentation/view_models/stock_counts_view_model.dart';
@@ -15,6 +17,7 @@ void main() {
     WidgetTester tester,
     Widget home, {
     bool owner = true,
+    ThemeData? theme,
   }) async {
     tester.view.physicalSize = const Size(800, 2000);
     tester.view.devicePixelRatio = 1;
@@ -24,7 +27,7 @@ void main() {
         session: FakeSession(person(owner: owner)),
         child: ShopScope(
           shop: FakeShopContext([store('L1'), store('L2')]),
-          child: MaterialApp(home: home),
+          child: MaterialApp(theme: theme ?? AppTheme.light, home: home),
         ),
       ),
     );
@@ -55,7 +58,7 @@ void main() {
 
       expect(find.text('1 still open'), findsOneWidget);
       expect(find.text('Kids rack'), findsOneWidget);
-      expect(find.text('IN PROGRESS'), findsOneWidget);
+      expect(find.text('In progress'), findsOneWidget);
       expect(find.text('12 items to count'), findsOneWidget);
       expect(find.text('Store L1 • made 1 Oct'), findsNWidgets(2));
       expect(find.text('34 of 40 counted'), findsOneWidget);
@@ -79,7 +82,7 @@ void main() {
       final repo = FakeStockCountRepository(
         list: () async => counts,
         create: () async => throw const ApiException(
-          'L2 is switched off, so it cannot be counted.',
+          'L1 is switched off, so it cannot be counted.',
         ),
       );
       await pump(
@@ -89,15 +92,16 @@ void main() {
 
       await tester.tap(find.text('New count'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Store L2'));
+      // No store to choose: the count is of the store the app is on.
+      expect(find.text('Counts the stock at Store L1'), findsOneWidget);
       await tester.tap(find.text('Kids'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Create count'));
       await tester.pumpAndSettle();
 
-      expect(repo.calls.last, endsWith(' Full Count L2 KIDS'));
+      expect(repo.calls.last, endsWith(' Full Count L1 KIDS'));
       expect(
-        find.text('L2 is switched off, so it cannot be counted.'),
+        find.text('L1 is switched off, so it cannot be counted.'),
         findsOneWidget,
       );
     });
@@ -191,6 +195,90 @@ void main() {
       expect(find.text('Start counting'), findsOneWidget);
       expect(find.text('Scan'), findsNothing);
       expect(find.byTooltip('Add one piece'), findsNothing);
+    });
+  });
+
+  group('looks', () {
+    for (final theme in [AppTheme.light, AppTheme.dark]) {
+      testWidgets('both screens draw in ${theme.brightness.name}', (
+        tester,
+      ) async {
+        await pump(
+          tester,
+          StockCountsScreen(
+            viewModel: StockCountsViewModel(
+              FakeStockCountRepository(
+                list: () async => [
+                  count('1', status: 'IN_PROGRESS'),
+                  count('2', status: 'COMPLETED', accuracy: '97.5'),
+                ],
+              ),
+            ),
+          ),
+          theme: theme,
+        );
+        expect(find.text('In progress'), findsOneWidget);
+        expect(find.text('97.5% matched'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+
+        await pump(
+          tester,
+          StockCountScreen(
+            countId: 'c1',
+            viewModel: StockCountViewModel(
+              'c1',
+              FakeStockCountRepository(one: () async => detail()),
+            ),
+          ),
+          theme: theme,
+        );
+        expect(find.text('Cotton Kurta'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('no counts yet, in the web\'s words', (tester) async {
+      await pump(
+        tester,
+        StockCountsScreen(
+          viewModel: StockCountsViewModel(
+            FakeStockCountRepository(list: () async => []),
+          ),
+        ),
+      );
+      expect(find.text('No audits found'), findsOneWidget);
+    });
+
+    testWidgets('a failed load says what failed; a 403 is no access', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        StockCountsScreen(
+          viewModel: StockCountsViewModel(
+            FakeStockCountRepository(
+              list: () async => throw const ApiException('Server down'),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('Could not load audits.'), findsOneWidget);
+      expect(find.text('Try again'), findsOneWidget);
+
+      await pump(
+        tester,
+        // A new screen, not the one above with its view model.
+        StockCountsScreen(
+          key: UniqueKey(),
+          viewModel: StockCountsViewModel(
+            FakeStockCountRepository(
+              list: () async =>
+                  throw const ApiException('Forbidden', statusCode: 403),
+            ),
+          ),
+        ),
+      );
+      expect(find.byType(NoAccessView), findsOneWidget);
     });
   });
 }

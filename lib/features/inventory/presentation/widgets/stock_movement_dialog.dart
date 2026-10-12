@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/core/widgets/async_state.dart';
 import 'package:scaleezy/features/inventory/presentation/view_models/stock_movement_view_model.dart';
 import 'package:scaleezy/features/products/data/product_models.dart';
 
@@ -23,17 +24,10 @@ Future<bool> showStockMovement(
     ),
   );
   if (done == true && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isStockIn
-              ? 'Received into ${variant.sku}.'
-              : 'Taken out of ${variant.sku}.',
-        ),
-        backgroundColor: isStockIn
-            ? AppColors.accentSuccess
-            : AppColors.accentDanger,
-      ),
+    showMessage(
+      context,
+      isStockIn ? 'Stock added successfully' : 'Stock deducted successfully',
+      success: true,
     );
   }
   return done == true;
@@ -102,62 +96,37 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
   }
 
   Widget _buildDialog() {
-    final primaryColor = _vm.isStockIn
-        ? AppColors.accentSuccess
-        : AppColors.accentDanger;
-    final primaryBg = _vm.isStockIn
-        ? AppColors.accentSuccessLight
-        : AppColors.accentDangerLight;
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    final tone = _vm.isStockIn ? c.success : c.danger;
+    final action = _vm.isStockIn ? 'Receive Stock' : 'Issue Stock';
 
     return Dialog(
-      backgroundColor: AppColors.bgCard,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: AppColors.borderLight),
-      ),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(22),
+        padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: primaryBg,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        _vm.isStockIn
-                            ? Icons.add_box_rounded
-                            : Icons.indeterminate_check_box_rounded,
-                        color: primaryColor,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      _vm.isStockIn ? 'Receive Stock' : 'Issue Stock',
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                  ],
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.close_rounded,
-                    color: AppColors.textSecondary,
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: tint(tone),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    _vm.isStockIn ? Icons.add_rounded : Icons.remove_rounded,
+                    color: tone,
                     size: 20,
                   ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Text(action, style: type.titleLarge)),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 20),
+                  color: c.textSecondary,
                   onPressed: _vm.busy
                       ? null
                       : () => Navigator.of(context).pop(),
@@ -169,12 +138,11 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.bgSurface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.borderLight),
+                color: c.input,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: c.border),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
                     child: Column(
@@ -182,20 +150,15 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                       children: [
                         Text(
                           widget.title,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
+                          style: type.titleSmall,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 2),
                         Text(
                           widget.sku,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textMuted,
+                          style: type.labelMedium!.copyWith(
+                            color: c.textMuted,
                             fontFamily: 'monospace',
                           ),
                         ),
@@ -206,20 +169,11 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      const Text(
-                        'Current Stock',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      Text('IN STOCK', style: type.labelSmall),
                       Text(
-                        '${widget.currentStock} units',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
+                        '${widget.currentStock} pieces',
+                        style: type.titleSmall!.copyWith(
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
                     ],
@@ -228,148 +182,54 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Quantity',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 6),
             TextField(
               controller: _qtyController,
               onChanged: (text) => _vm.quantity = text,
               keyboardType: TextInputType.number,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w800,
-                fontSize: 16,
-              ),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: AppColors.bgInput,
+              decoration: const InputDecoration(
+                labelText: 'Quantity',
                 hintText: 'Enter quantity',
-                hintStyle: const TextStyle(color: AppColors.textMuted),
-                prefixIcon: const Icon(
-                  Icons.numbers_rounded,
-                  color: AppColors.textSecondary,
-                  size: 20,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: AppColors.borderLight),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: AppColors.accentGold),
-                ),
+                prefixIcon: Icon(Icons.numbers_rounded, size: 20),
               ),
             ),
             const SizedBox(height: 8),
-            // Quick Quantity Stepper Pills
             Row(
               children: [
-                _buildQtyPill('+1', 1),
-                const SizedBox(width: 6),
-                _buildQtyPill('+5', 5),
-                const SizedBox(width: 6),
-                _buildQtyPill('+10', 10),
-                const SizedBox(width: 6),
-                _buildQtyPill('+25', 25),
+                for (final n in const [1, 5, 10, 25]) ...[
+                  _qtyPill('+$n', n),
+                  const SizedBox(width: 6),
+                ],
               ],
             ),
             if (_vm.isStockIn) ...[
-              const SizedBox(height: 14),
-              const Text(
-                'What you paid per piece (₹)',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 16),
               TextField(
                 controller: _costController,
                 onChanged: (text) => _vm.cost = text,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: AppColors.bgInput,
+                decoration: const InputDecoration(
+                  labelText: 'What you paid per piece (₹)',
                   hintText: 'Optional unit purchase price',
-                  hintStyle: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 13,
-                  ),
-                  prefixIcon: const Icon(
-                    Icons.currency_rupee_rounded,
-                    color: AppColors.textSecondary,
-                    size: 18,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: AppColors.borderLight),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: AppColors.accentGold),
-                  ),
+                  prefixIcon: Icon(Icons.currency_rupee_rounded, size: 18),
                 ),
               ),
             ],
-            const SizedBox(height: 14),
-            const Text(
-              'Reason',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: AppColors.bgInput,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.borderLight),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _vm.reason,
-                  isExpanded: true,
-                  dropdownColor: AppColors.bgCard,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              initialValue: _vm.reason,
+              isExpanded: true,
+              hint: const Text('Choose a reason…'),
+              decoration: const InputDecoration(labelText: 'Reason'),
+              items: [
+                for (final r in _vm.reasons)
+                  DropdownMenuItem(
+                    value: r,
+                    child: Text(StockMovementViewModel.reasonLabels[r] ?? r),
                   ),
-                  items: _vm.reasons.map((r) {
-                    return DropdownMenuItem(
-                      value: r,
-                      child: Text(r.replaceAll('_', ' ')),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    if (val != null) _vm.reason = val;
-                  },
-                ),
-              ),
+              ],
+              onChanged: _vm.busy ? null : (val) => _vm.reason = val,
             ),
             if (_vm.error != null) ...[
               const SizedBox(height: 14),
@@ -377,20 +237,16 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.accentDangerLight,
-                  borderRadius: BorderRadius.circular(10),
+                  color: tint(c.danger),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   _vm.error!,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.accentDanger,
-                  ),
+                  style: type.bodySmall!.copyWith(color: c.danger),
                 ),
               ),
             ],
-            const SizedBox(height: 22),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
@@ -398,46 +254,23 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
                     onPressed: _vm.busy
                         ? null
                         : () => Navigator.of(context).pop(),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.textSecondary,
-                      side: const BorderSide(color: AppColors.borderLight),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: const Text(
-                      'Cancel',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                    child: const Text('Cancel'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: ElevatedButton(
+                  child: FilledButton(
                     onPressed: _vm.busy ? null : _confirm,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
                     child: _vm.busy
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.2,
-                              color: Colors.white,
+                              color: c.card,
                             ),
                           )
-                        : Text(
-                            _vm.isStockIn ? 'Receive Stock' : 'Issue Stock',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
+                        : Text(action),
                   ),
                 ),
               ],
@@ -448,24 +281,19 @@ class _StockMovementDialogState extends State<StockMovementDialog> {
     );
   }
 
-  Widget _buildQtyPill(String label, int amount) {
-    return GestureDetector(
+  Widget _qtyPill(String label, int amount) {
+    final c = context.colors;
+    return InkWell(
       onTap: () => _addQty(amount),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: AppColors.bgSurface,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: AppColors.borderLight),
+          color: c.input,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: c.border),
         ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
-          ),
-        ),
+        child: Text(label, style: Theme.of(context).textTheme.labelMedium),
       ),
     );
   }
