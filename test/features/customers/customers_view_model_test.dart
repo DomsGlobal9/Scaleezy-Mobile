@@ -81,6 +81,84 @@ void main() {
       expect(vm.error, isNull);
       expect(vm.full!.id, 'c1');
     });
+
+    test('loads points and store credit alongside the customer', () async {
+      final asked = <String>[];
+      final vm = CustomerDetailViewModel(
+        'c1',
+        FakeCustomerRepository(
+          one: (id) async => customer(id),
+          points: (id) async {
+            asked.add('points $id');
+            return const CustomerPoints(enabled: true, points: 120, value: 60);
+          },
+          credit: (id) async {
+            asked.add('credit $id');
+            return const StoreCredit(credit: 249.5);
+          },
+        ),
+      );
+
+      await vm.load();
+      expect(asked, ['points c1', 'credit c1']);
+      expect(vm.full!.id, 'c1');
+      expect(vm.points!.points, 120);
+      expect(vm.credit!.credit, 249.5);
+    });
+
+    test('loyalty off and no credit: both hidden', () async {
+      final vm = CustomerDetailViewModel(
+        'c1',
+        FakeCustomerRepository(
+          one: (id) async => customer(id),
+          points: (_) async =>
+              const CustomerPoints(enabled: false, points: 0, value: 0),
+          credit: (_) async => const StoreCredit(credit: 0),
+        ),
+      );
+
+      await vm.load();
+      expect(vm.full, isNotNull);
+      expect(vm.points, isNull);
+      expect(vm.credit, isNull);
+    });
+
+    test('a failed points or credit call still shows the customer', () async {
+      final vm = CustomerDetailViewModel(
+        'c1',
+        FakeCustomerRepository(
+          one: (id) async => customer(id),
+          credit: (_) async => throw const ApiException('The server is busy.'),
+          // points unset: refused (403)
+        ),
+      );
+
+      await vm.load();
+      expect(vm.full!.id, 'c1');
+      expect(vm.error, isNull);
+      expect(vm.points, isNull);
+      expect(vm.credit, isNull);
+    });
+
+    test('the customer shows before points arrive', () async {
+      final slow = Completer<CustomerPoints>();
+      final vm = CustomerDetailViewModel(
+        'c1',
+        FakeCustomerRepository(
+          one: (id) async => customer(id),
+          points: (_) => slow.future,
+        ),
+      );
+
+      final loading = vm.load();
+      await pumpEventQueue();
+      expect(vm.full!.id, 'c1');
+      expect(vm.points, isNull);
+
+      slow.complete(const CustomerPoints(enabled: true, points: 5, value: 5));
+      await loading;
+      expect(vm.points!.points, 5);
+    });
   });
 
   group('CustomerFormViewModel', () {

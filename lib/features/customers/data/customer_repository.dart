@@ -21,6 +21,18 @@ class CustomerRepository {
     asMap(dataOf(await _api.get(ApiEndpoints.customer(id)))),
   );
 
+  /// customer:view. Answers even with loyalty off (`enabled: false`); the
+  /// latest 100 changes.
+  Future<CustomerPoints> customerPoints(String id) async =>
+      CustomerPoints.fromJson(
+        asMap(dataOf(await _api.get(ApiEndpoints.customerLoyalty(id)))),
+      );
+
+  /// customer:view. The latest 100 changes.
+  Future<StoreCredit> storeCredit(String id) async => StoreCredit.fromJson(
+    asMap(dataOf(await _api.get(ApiEndpoints.customerStoreCredit(id)))),
+  );
+
   /// customer:view. Null when no customer has that number.
   Future<Customer?> customerByPhone(String phone) async {
     final data = dataOf(
