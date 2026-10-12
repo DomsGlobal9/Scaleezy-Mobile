@@ -51,13 +51,14 @@ WhatsApp linking, POS tills, CSV import, platform console, help center (link out
   store transfers → day book (view) and receipt share → alerts, stock adjustment, order
   confirm/cancel/dispatch, returns.
 
-## Still open
-
-
-- **Store selection**: the web always has a store selected (saved choice, else `MAIN-STORE`, else
-  first) and persists it; the app defaults to "all stores" (no `x-location-id`) and does not persist.
-- **Branding**: the web has a lime / deep-green brand on zinc neutrals with light + dark themes; the
-  app is slate + amber, light only.
+- **Store selection = the website's**: always exactly one store (saved choice, else `MAIN-STORE`,
+  else first), remembered across restarts, used by every screen; no "All stores".
+- **Dark mode**: like the website — light by default, System / Light / Dark, remembered.
+- **"You pay" = `costPrice`** (hand-entered), as on the web; average cost shown as "Average cost"
+  only when it differs.
+- **Dashboard**: people with `report:financial` see the website's money tiles
+  (`/reports/dashboard-summary`); everyone else keeps the basic summary counts.
+- **Routing, look and behaviour** follow `routing.md`, `design.md` and `behaviour-parity.md`.
 
 ## Web conventions the app already matches
 
