@@ -5,9 +5,11 @@ import 'package:scaleezy/app/app_routes.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
 import 'package:scaleezy/core/utils/money.dart';
+import 'package:scaleezy/core/widgets/status_pill.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/inventory/presentation/widgets/stock_movement_dialog.dart';
 import 'package:scaleezy/features/products/data/product_models.dart';
+import 'package:scaleezy/features/products/presentation/widgets/stock_pill.dart';
 import 'package:scaleezy/features/scanner/presentation/view_models/scanner_view_model.dart';
 
 class ScannerScreen extends StatefulWidget {
@@ -91,9 +93,15 @@ class _ScannerScreenState extends State<ScannerScreen>
     _lookup(code);
   }
 
-  Future<void> _lookup(String code) async {
+  /// The camera passes only [code]; typed text, a recent chip and a refresh pass [typed].
+  Future<void> _lookup(String code, {bool typed = false}) async {
     final before = _vm.scanned;
-    final error = await _vm.lookup(code, choose: _chooseMatch);
+    final error = await _vm.lookup(
+      code,
+      typed: typed,
+      choose: _chooseMatch,
+      openProduct: (p) => AppRoutes.productDetail(context, p),
+    );
     if (!mounted || error != null) return;
     if (_vm.error != null) {
       HapticFeedback.heavyImpact(); // nothing matched
@@ -107,35 +115,26 @@ class _ScannerScreenState extends State<ScannerScreen>
     return showModalBottomSheet<VariantItem>(
       context: context,
       useRootNavigator: true,
-      backgroundColor: AppColors.bgCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      showDragHandle: true,
       builder: (ctx) => SafeArea(
         child: ListView(
           shrinkWrap: true,
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.only(bottom: 12),
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(
                 'Which one?',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                style: Theme.of(ctx).textTheme.titleMedium,
               ),
             ),
             ...matches.map(
               (v) => ListTile(
-                title: Text(
-                  v.productTitle,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
+                title: Text(v.productTitle),
                 subtitle: Text(
-                  [v.sku, if (v.label.isNotEmpty) v.label].join(' • '),
+                  [v.sku, if (v.label.isNotEmpty) v.label].join(' · '),
                 ),
-                trailing: Text(
-                  '${v.quantity} pcs',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
+                trailing: StockPill(v.quantity, low: v.isLowStock),
                 onTap: () => Navigator.of(ctx).pop(v),
               ),
             ),
@@ -155,7 +154,9 @@ class _ScannerScreenState extends State<ScannerScreen>
       isStockIn: isStockIn,
     );
     // Read the new count back rather than doing the sum here.
-    if (done && mounted) _lookup(v.sku.isNotEmpty ? v.sku : v.barcode);
+    if (done && mounted) {
+      _lookup(v.sku.isNotEmpty ? v.sku : v.barcode, typed: true);
+    }
   }
 
   @override
@@ -172,110 +173,53 @@ class _ScannerScreenState extends State<ScannerScreen>
   }
 
   Widget _buildScreen({required bool canReceive, required bool canAdjust}) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: SafeArea(
         child: Column(
           children: [
-            // Top Bar
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Tag Scanner',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.textPrimary,
-                          letterSpacing: -0.6,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Code128 Barcodes & QR Codes',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
+            PageHeader(
+              title: 'Scan',
+              subtitle: 'Barcode, SKU or QR code on the tag',
+              actions: [
+                IconButton(
+                  tooltip: _isTorchOn ? 'Torch off' : 'Torch on',
+                  icon: Icon(
+                    _isTorchOn
+                        ? Icons.flash_on_rounded
+                        : Icons.flash_off_rounded,
+                    color: _isTorchOn ? c.brandInk : c.textSecondary,
                   ),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.bgCard,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.borderLight),
-                      boxShadow: AppColors.cardShadow,
-                    ),
-                    child: IconButton(
-                      icon: Icon(
-                        _isTorchOn
-                            ? Icons.flash_on_rounded
-                            : Icons.flash_off_rounded,
-                        color: _isTorchOn
-                            ? AppColors.accentGold
-                            : AppColors.textSecondary,
-                        size: 20,
-                      ),
-                      onPressed: () async {
-                        try {
-                          await _camera.toggleTorch();
-                          setState(() => _isTorchOn = !_isTorchOn);
-                        } catch (_) {}
-                      },
-                    ),
-                  ),
-                ],
-              ),
+                  onPressed: () async {
+                    try {
+                      await _camera.toggleTorch();
+                      setState(() => _isTorchOn = !_isTorchOn);
+                    } catch (_) {}
+                  },
+                ),
+              ],
             ),
 
             // Typed code, for a tag the camera cannot read (or an emulator with no camera)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
                 controller: _codeController,
                 textInputAction: TextInputAction.search,
-                onSubmitted: _lookup,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 14,
-                ),
+                onSubmitted: (text) => _lookup(text, typed: true),
                 decoration: InputDecoration(
                   isDense: true,
-                  filled: true,
-                  fillColor: AppColors.bgCard,
-                  hintText: 'Or type a barcode / SKU',
-                  hintStyle: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 13,
-                  ),
-                  prefixIcon: const Icon(
-                    Icons.keyboard_rounded,
-                    color: AppColors.textSecondary,
-                    size: 20,
-                  ),
+                  hintText: 'Name, SKU or barcode',
+                  prefixIcon: const Icon(Icons.keyboard_rounded, size: 20),
                   suffixIcon: IconButton(
-                    icon: const Icon(
+                    tooltip: 'Look up',
+                    icon: Icon(
                       Icons.arrow_forward_rounded,
-                      color: AppColors.accentGold,
+                      color: c.brandInk,
                       size: 20,
                     ),
-                    onPressed: () => _lookup(_codeController.text),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.borderLight),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.accentGold),
+                    onPressed: () => _lookup(_codeController.text, typed: true),
                   ),
                 ),
               ),
@@ -283,24 +227,18 @@ class _ScannerScreenState extends State<ScannerScreen>
 
             const SizedBox(height: 10),
 
-            // Scanner Viewfinder Area
+            // The camera. Everything drawn over it is a photo overlay: dark glass, light text.
             Expanded(
               flex: 4,
               child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 20),
+                margin: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
                   color: Colors.black,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF0F172A).withValues(alpha: 0.15),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: c.border),
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(16),
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -314,12 +252,11 @@ class _ScannerScreenState extends State<ScannerScreen>
                               child: Text(
                                 error.errorCode ==
                                         MobileScannerErrorCode.permissionDenied
-                                    ? 'Camera access is off. Allow it in Settings, or type the code above.'
-                                    : 'The camera is not available here. Type the code above.',
+                                    ? 'The camera was not allowed. Turn it on in Settings, or type the code.'
+                                    : 'The camera could not be opened. Type the code instead.',
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
+                                style: type.bodySmall!.copyWith(
                                   color: Colors.white70,
-                                  fontSize: 12,
                                 ),
                               ),
                             ),
@@ -327,18 +264,16 @@ class _ScannerScreenState extends State<ScannerScreen>
                         ),
                       ),
 
-                      // Gold Corner Brackets for Scanner Framing
+                      // Corner brackets framing the tag
                       SizedBox(
                         width: 270,
                         height: 170,
                         child: CustomPaint(
-                          painter: ScannerReticlePainter(
-                            accentColor: AppColors.accentGold,
-                          ),
+                          painter: ScannerReticlePainter(accentColor: c.brand),
                         ),
                       ),
 
-                      // Animated Laser Beam
+                      // Sweeping line
                       AnimatedBuilder(
                         animation: _laserAnimation,
                         builder: (context, child) {
@@ -349,12 +284,10 @@ class _ScannerScreenState extends State<ScannerScreen>
                             child: Container(
                               height: 2.5,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFDE68A),
+                                color: c.brand,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.accentGold.withValues(
-                                      alpha: 0.9,
-                                    ),
+                                    color: tint(c.brand, 0.6),
                                     blurRadius: 12,
                                     spreadRadius: 3,
                                   ),
@@ -368,14 +301,11 @@ class _ScannerScreenState extends State<ScannerScreen>
                       if (_vm.lookingUp)
                         Container(
                           color: Colors.black45,
-                          child: const Center(
-                            child: CircularProgressIndicator(
-                              color: Color(0xFFFDE68A),
-                            ),
+                          child: Center(
+                            child: CircularProgressIndicator(color: c.brand),
                           ),
                         ),
 
-                      // Hint Text Banner
                       Positioned(
                         bottom: 16,
                         child: Container(
@@ -385,23 +315,21 @@ class _ScannerScreenState extends State<ScannerScreen>
                           ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.7),
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: Colors.white12),
                           ),
-                          child: const Row(
+                          child: Row(
                             children: [
                               Icon(
                                 Icons.crop_free_rounded,
                                 size: 14,
-                                color: Color(0xFFFDE68A),
+                                color: c.brand,
                               ),
-                              SizedBox(width: 8),
+                              const SizedBox(width: 8),
                               Text(
-                                'Align 50x25mm garment tag inside box',
-                                style: TextStyle(
-                                  fontSize: 11,
+                                'Point at the barcode',
+                                style: type.labelMedium!.copyWith(
                                   color: Colors.white,
-                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
@@ -416,27 +344,19 @@ class _ScannerScreenState extends State<ScannerScreen>
 
             const SizedBox(height: 14),
 
-            // Live Scanned SKU Card
+            // The piece found
             Expanded(
               flex: 6,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 decoration: BoxDecoration(
-                  color: AppColors.bgCard,
+                  color: c.card,
                   borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(28),
+                    top: Radius.circular(16),
                   ),
-                  border: const Border(
-                    top: BorderSide(color: AppColors.borderLight),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF0F172A).withValues(alpha: 0.06),
-                      blurRadius: 20,
-                      offset: const Offset(0, -6),
-                    ),
-                  ],
+                  border: Border(top: BorderSide(color: c.border)),
+                  boxShadow: c.panelShadow,
                 ),
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
@@ -479,6 +399,8 @@ class _ScannerScreenState extends State<ScannerScreen>
   }
 
   Widget _buildResult({required bool canReceive, required bool canAdjust}) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     final v = _vm.scanned;
     final error = _vm.error;
     final recent = _vm.recent;
@@ -491,20 +413,15 @@ class _ScannerScreenState extends State<ScannerScreen>
               error != null
                   ? Icons.search_off_rounded
                   : Icons.qr_code_2_rounded,
-              size: 44,
-              color: error != null
-                  ? AppColors.accentDanger
-                  : AppColors.textMuted,
+              size: 40,
+              color: error != null ? c.danger : c.textMuted,
             ),
             const SizedBox(height: 10),
             Text(
               error ?? 'Scan a garment tag to see its stock',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: error != null
-                    ? AppColors.accentDanger
-                    : AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
+              style: type.bodyMedium!.copyWith(
+                color: error != null ? c.danger : c.textSecondary,
               ),
             ),
           ],
@@ -512,53 +429,44 @@ class _ScannerScreenState extends State<ScannerScreen>
       );
     }
 
-    final stockColor = v.isOutOfStock || v.isLowStock
-        ? AppColors.accentDanger
-        : AppColors.accentSuccess;
+    final stock = stockLook(v.quantity, low: v.isLowStock);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.accentSuccessLight,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: AppColors.accentSuccess.withValues(alpha: 0.2),
+            if (_vm.exactMatch)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: tint(c.success),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 13,
+                      color: c.success,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'SKU Match Verified',
+                      style: type.labelMedium!.copyWith(color: c.success),
+                    ),
+                  ],
                 ),
               ),
-              child: const Row(
-                children: [
-                  Icon(
-                    Icons.check_circle_rounded,
-                    size: 13,
-                    color: AppColors.accentSuccess,
-                  ),
-                  SizedBox(width: 5),
-                  Text(
-                    'SKU Match Verified',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.accentSuccess,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            const Spacer(),
             if (v.barcode.isNotEmpty)
               Flexible(
+                flex: 3,
                 child: Text(
-                  'BARCODE: ${v.barcode}',
+                  v.barcode,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textMuted,
+                  style: type.labelMedium!.copyWith(
+                    color: c.textMuted,
                     fontFamily: 'monospace',
                   ),
                 ),
@@ -567,66 +475,56 @@ class _ScannerScreenState extends State<ScannerScreen>
         ),
         if (error != null) ...[
           const SizedBox(height: 6),
-          Text(
-            error,
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppColors.accentDanger,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          Text(error, style: type.labelMedium!.copyWith(color: c.danger)),
         ],
         const SizedBox(height: 10),
         Text(
           v.productTitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textPrimary,
-            letterSpacing: -0.4,
-          ),
+          style: type.titleMedium,
         ),
         const SizedBox(height: 2),
-        Text(
-          [v.sku, if (v.label.isNotEmpty) v.label].join(' • '),
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-            fontWeight: FontWeight.w500,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                [v.sku, if (v.label.isNotEmpty) v.label].join(' · '),
+                style: type.bodySmall,
+              ),
+            ),
+            StatusPill(stock.label, stock.tone),
+          ],
         ),
         const SizedBox(height: 14),
 
-        // Metrics Strip
         Row(
           children: [
             Expanded(
               child: _buildMetricTile(
-                label: 'Physical Stock',
+                label: 'Stock',
                 value: '${v.quantity}',
-                unit: 'units',
-                color: stockColor,
+                unit: 'pieces',
+                color: c.tone(stock.tone),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: _buildMetricTile(
-                label: 'Reorder At',
+                label: 'Reorder at',
                 value: v.reorderLevel > 0 ? '${v.reorderLevel}' : '—',
-                unit: 'units',
-                color: AppColors.accentBlue,
+                unit: v.reorderLevel > 0 ? 'pieces' : '',
+                color: c.text,
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: v.averageCost != null
+              child: v.costPrice != null
                   ? _buildMetricTile(
                       label: 'You pay',
-                      value: formatRupees(v.averageCost!),
+                      value: formatRupees(v.costPrice!),
                       unit: 'per piece',
-                      color: AppColors.accentGold,
+                      color: c.text,
                     )
                   : _buildMetricTile(
                       label: 'You sell at',
@@ -634,7 +532,7 @@ class _ScannerScreenState extends State<ScannerScreen>
                           ? formatRupees(v.sellingPrice!)
                           : '—',
                       unit: '',
-                      color: AppColors.accentGold,
+                      color: c.text,
                     ),
             ),
           ],
@@ -642,38 +540,15 @@ class _ScannerScreenState extends State<ScannerScreen>
 
         const SizedBox(height: 10),
         if (SessionScope.of(context).can('shelf:view'))
-          Pressable(
-            onTap: () => AppRoutes.findPiece(
-              context,
-              initialQuery: v.sku.isNotEmpty ? v.sku : v.barcode,
-            ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.accentGoldLight,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.accentGoldBorder),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => AppRoutes.findPiece(
+                context,
+                initialQuery: v.sku.isNotEmpty ? v.sku : v.barcode,
               ),
-              child: const Row(
-                children: [
-                  Icon(Icons.shelves, size: 16, color: AppColors.accentGold),
-                  SizedBox(width: 8),
-                  Text(
-                    'Where is it?',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.accentGold,
-                    ),
-                  ),
-                  Spacer(),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 18,
-                    color: AppColors.accentGold,
-                  ),
-                ],
-              ),
+              icon: const Icon(Icons.shelves, size: 16),
+              label: const Text('Where is it?'),
             ),
           ),
         if (recent.length > 1) ...[
@@ -684,42 +559,26 @@ class _ScannerScreenState extends State<ScannerScreen>
             children: [
               for (final r in recent.skip(1))
                 ActionChip(
-                  label: Text(
-                    r.sku,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  label: Text(r.sku),
                   avatar: const Icon(Icons.history_rounded, size: 14),
                   visualDensity: VisualDensity.compact,
-                  backgroundColor: AppColors.bgSurface,
-                  side: BorderSide.none,
-                  onPressed: () =>
-                      _lookup(r.sku.isNotEmpty ? r.sku : r.barcode),
+                  onPressed: () => _lookup(
+                    r.sku.isNotEmpty ? r.sku : r.barcode,
+                    typed: true,
+                  ),
                 ),
             ],
           ),
         ],
         const Spacer(),
 
-        // Action Buttons Row
         Row(
           children: [
             if (canReceive)
               Expanded(
-                child: ElevatedButton.icon(
+                child: FilledButton.icon(
                   icon: const Icon(Icons.add_box_rounded, size: 18),
-                  label: const Text('Receive Stock'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accentSuccess,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
+                  label: const Text('Receive stock'),
                   onPressed: () => _move(true),
                 ),
               ),
@@ -731,14 +590,10 @@ class _ScannerScreenState extends State<ScannerScreen>
                     Icons.indeterminate_check_box_rounded,
                     size: 18,
                   ),
-                  label: const Text('Issue Stock'),
+                  label: const Text('Issue stock'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.accentDanger,
-                    side: const BorderSide(color: AppColors.accentDanger),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    foregroundColor: c.danger,
+                    side: BorderSide(color: tint(c.danger, 0.5)),
                   ),
                   onPressed: () => _move(false),
                 ),
@@ -755,49 +610,38 @@ class _ScannerScreenState extends State<ScannerScreen>
     required String unit,
     required Color color,
   }) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.bgSurface,
+        color: c.input,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderLight),
+        border: Border.all(color: c.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            label,
-            style: const TextStyle(
-              fontSize: 10,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: type.labelSmall,
           ),
           const SizedBox(height: 4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                  color: color,
-                  letterSpacing: -0.5,
-                ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: type.titleMedium!.copyWith(
+                color: color,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
-              const SizedBox(width: 4),
-              Text(
-                unit,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+            ),
           ),
+          if (unit.isNotEmpty)
+            Text(unit, style: type.labelMedium!.copyWith(color: c.textMuted)),
         ],
       ),
     );

@@ -20,13 +20,13 @@ class ProductDetailViewModel extends ViewModel {
   final InventoryRepository _inventory;
 
   List<VariantItem>? _variants;
-  String? _error;
+  ApiException? _error;
   String? _colour; // null = every colour
   bool _changed = false;
 
   /// Null until the first load arrives.
   List<VariantItem>? get variants => _variants;
-  String? get error => _error;
+  ApiException? get error => _error;
   String? get colour => _colour;
 
   /// True once stock was moved, so the list behind can refresh.
@@ -38,7 +38,7 @@ class ProductDetailViewModel extends ViewModel {
     try {
       _variants = await _products.getProductVariants(product.id);
     } on ApiException catch (e) {
-      _error = e.message;
+      _error = e;
     }
     notifyListeners();
   }

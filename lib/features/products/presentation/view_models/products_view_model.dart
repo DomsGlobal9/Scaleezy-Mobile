@@ -26,7 +26,16 @@ class ProductsViewModel extends ViewModel {
 
   final ProductRepository _repo;
 
-  static const categories = ['ALL', 'WOMEN', 'MEN', 'KIDS', 'UNISEX'];
+  /// Every category; the filter sends none.
+  static const all = 'ALL';
+
+  /// Used until (or if never) the shop's own list arrives from the catalogue.
+  static const fallbackCategories = <CatalogOption>[
+    (value: 'WOMEN', label: 'Women'),
+    (value: 'MEN', label: 'Men'),
+    (value: 'KIDS', label: 'Kids'),
+    (value: 'UNISEX', label: 'Unisex'),
+  ];
   // null = the server's default of active + draft.
   static const statuses = <String?, String>{
     null: 'Active & Drafts',
@@ -37,7 +46,8 @@ class ProductsViewModel extends ViewModel {
   };
 
   String _query = '';
-  String _category = 'ALL';
+  String _category = all;
+  List<CatalogOption> _categories = fallbackCategories;
   String? _status;
   ProductSort _sort = ProductSort.newest;
   bool _grid = true;
@@ -47,12 +57,26 @@ class ProductsViewModel extends ViewModel {
   int _total = 0;
   bool _hasMore = true;
   bool _loading = false;
-  String? _error;
+  ApiException? _error;
   int _requestId = 0;
   Timer? _debounce;
 
   String get query => _query;
   String get category => _category;
+
+  /// [value]'s name in the shop's catalogue, else "WOMEN" reads "Women".
+  String categoryLabel(String value) =>
+      _categories.where((c) => c.value == value).firstOrNull?.label ??
+      (value.isEmpty
+          ? ''
+          : value[0].toUpperCase() +
+                value.substring(1).toLowerCase().replaceAll('_', ' '));
+
+  /// "All" first, then the shop's categories.
+  List<CatalogOption> get categories => [
+    (value: all, label: 'All'),
+    ..._categories,
+  ];
   String? get status => _status;
   ProductSort get sort => _sort;
   bool get grid => _grid;
@@ -63,7 +87,9 @@ class ProductsViewModel extends ViewModel {
   int get total => _total;
   bool get hasMore => _hasMore;
   bool get loading => _loading;
-  String? get error => _error;
+
+  /// Kept whole so a 403 can show "no access" rather than a retry.
+  ApiException? get error => _error;
   bool get isFiltered => _status != null || _sort != ProductSort.newest;
 
   /// Starts again from page one with the current search and filters.
@@ -87,7 +113,7 @@ class ProductsViewModel extends ViewModel {
       final result = await _repo.getProducts(
         page: _page + 1,
         search: _query,
-        category: _category == 'ALL' ? null : _category,
+        category: _category == all ? null : _category,
         status: _status,
         sortBy: _sort.field,
         order: _sort.order,
@@ -101,10 +127,22 @@ class ProductsViewModel extends ViewModel {
       _error = null;
     } on ApiException catch (e) {
       if (disposed || id != _requestId) return;
-      _error = e.message;
+      _error = e;
     }
     _loading = false;
     notifyListeners();
+  }
+
+  /// The shop's categories from the catalogue; the built-in list stays if that fails.
+  Future<void> loadCategories() async {
+    try {
+      final loaded = await _repo.getCategories();
+      if (disposed || loaded.isEmpty) return;
+      _categories = loaded;
+      notifyListeners();
+    } on ApiException {
+      // The fallback list is still on screen.
+    }
   }
 
   /// Typing searches once the person pauses.

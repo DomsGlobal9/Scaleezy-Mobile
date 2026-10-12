@@ -11,12 +11,17 @@ class ScannerViewModel extends ViewModel {
   final ProductRepository _products;
 
   VariantItem? _scanned;
+  bool _exact = false;
   final List<VariantItem> _recent = [];
   String? _lastCode;
   bool _lookingUp = false;
   String? _error;
 
   VariantItem? get scanned => _scanned;
+
+  /// True when [scanned] matched the code exactly (barcode, SKU or variant code), not a
+  /// pick from a name search.
+  bool get exactMatch => _exact;
 
   /// What was scanned this session, newest first -- tap to bring one back.
   List<VariantItem> get recent => _recent;
@@ -32,11 +37,15 @@ class ScannerViewModel extends ViewModel {
     return !(code == _lastCode && _scanned != null);
   }
 
-  /// The decoded text goes to /variants/search as `q`; a barcode or SKU matches exactly.
-  /// Several matches go to [choose]. Returns the server's message when the search failed.
+  /// As the website's scan search: `/search` first, which matches a barcode, SKU, variant code
+  /// or product code exactly (ignoring case). An exact piece is shown; an exact product goes
+  /// to [openProduct]. Only [typed] text with no exact hit falls back to `/variants/search`,
+  /// whose several matches go to [choose]. Returns the server's message when a call failed.
   Future<String?> lookup(
     String code, {
     required Future<VariantItem?> Function(List<VariantItem> matches) choose,
+    Future<void> Function(ProductItem product)? openProduct,
+    bool typed = false,
   }) async {
     final q = code.trim();
     if (q.isEmpty) return null;
@@ -45,25 +54,61 @@ class ScannerViewModel extends ViewModel {
     _lastCode = q;
     notifyListeners();
     try {
-      final matches = await _products.searchVariants(q, limit: 10);
+      final found = await _products.search(q);
       if (disposed) return null;
+
       VariantItem? picked;
-      if (matches.length == 1) {
-        picked = matches.first;
-      } else if (matches.isNotEmpty) {
-        picked = await choose(matches);
+      var exact = false;
+      var offered = false; // several name matches were offered and none taken
+      final hit = found.variants
+          .where((h) => h.exactCode(q) != null)
+          .firstOrNull;
+      if (hit != null) {
+        // /search names the piece; its stock and prices come from the variant search.
+        final rows = await _products.searchVariants(
+          hit.exactCode(q)!,
+          limit: 10,
+        );
         if (disposed) return null;
+        picked = rows.where((v) => v.id == hit.id).firstOrNull;
+        exact = picked != null;
       }
+
+      final product = found.products
+          .where((h) => h.exactCode(q) != null)
+          .firstOrNull;
+      if (picked == null && product != null && openProduct != null) {
+        final item = await _products.getProduct(product.id);
+        if (disposed) return null;
+        _lookingUp = false;
+        notifyListeners();
+        await openProduct(item);
+        return null;
+      }
+
+      if (picked == null && typed) {
+        final matches = await _products.searchVariants(q, limit: 10);
+        if (disposed) return null;
+        if (matches.length == 1) {
+          picked = matches.first;
+        } else if (matches.isNotEmpty) {
+          picked = await choose(matches);
+          if (disposed) return null;
+          offered = picked == null;
+        }
+      }
+
       _lookingUp = false;
       if (picked != null) {
         _scanned = picked;
+        _exact = exact;
         _recent
           ..removeWhere((r) => r.id == picked!.id)
           ..insert(0, picked);
         if (_recent.length > 8) _recent.removeLast();
-      } else if (matches.isEmpty) {
+      } else if (!offered) {
         _scanned = null;
-        _error = 'No product matches "$q".';
+        _error = 'Nothing found for "$q". Check the barcode or SKU.';
       }
     } on ApiException catch (e) {
       if (disposed) return null;

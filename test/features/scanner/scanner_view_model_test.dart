@@ -9,26 +9,92 @@ Future<VariantItem?> neverAsked(List<VariantItem> _) =>
     throw StateError('should not ask');
 
 void main() {
-  test('one match is shown and remembered', () async {
-    final repo = FakeProductRepository((_) async => [piece('a')]);
+  test('an exact scan is shown, verified and remembered', () async {
+    final repo = FakeProductRepository(
+      (_) async => [piece('b'), piece('a')],
+      found: (_) async => exactHits([piece('a')]),
+    );
     final vm = ScannerViewModel(repo);
 
     expect(await vm.lookup('  890a ', choose: neverAsked), isNull);
+    expect(repo.searched.single, '890a');
+    // The piece's own stock and prices come from the variant search, on the matched code.
     expect(repo.calls.single, {'q': '890a', 'page': 1, 'limit': 10});
     expect(vm.scanned?.id, 'a');
+    expect(vm.exactMatch, isTrue);
     expect(vm.recent.map((v) => v.id), ['a']);
     expect((vm.lookingUp, vm.error), (false, null));
+  });
+
+  test('an exact match ignores case and asks with the stored code', () async {
+    final repo = FakeProductRepository(
+      (_) async => [piece('a')],
+      found: (_) async => exactHits([piece('a')]),
+    );
+    final vm = ScannerViewModel(repo);
+
+    await vm.lookup('SKU-A', choose: neverAsked);
+    expect(repo.calls.single['q'], 'SKU-a');
+    expect((vm.scanned?.id, vm.exactMatch), ('a', true));
+  });
+
+  test(
+    'a scanned code with no exact hit is not found, without guessing',
+    () async {
+      final repo = FakeProductRepository(
+        (_) async => [piece('a')],
+        // A title match from /search is not the tag that was scanned.
+        found: (_) async => const SearchResults(
+          variants: [SearchHit(id: 'a', label: 'Saree - Red', code: 'V-a')],
+        ),
+      );
+      final vm = ScannerViewModel(repo);
+
+      expect(await vm.lookup('saree', choose: neverAsked), isNull);
+      expect(repo.calls, isEmpty);
+      expect(vm.scanned, isNull);
+      expect(vm.error, 'Nothing found for "saree". Check the barcode or SKU.');
+    },
+  );
+
+  test('typed text with no exact hit falls back to the name search', () async {
+    final repo = FakeProductRepository((_) async => [piece('a')]);
+    final vm = ScannerViewModel(repo);
+
+    await vm.lookup('saree', typed: true, choose: neverAsked);
+    expect(repo.calls.single['q'], 'saree');
+    expect(vm.scanned?.id, 'a');
+    expect(vm.exactMatch, isFalse);
+  });
+
+  test('an exact product code opens the product', () async {
+    final repo = FakeProductRepository(
+      (_) async => [],
+      found: (_) async => const SearchResults(
+        products: [SearchHit(id: 'p1', label: 'Saree', code: 'SE-001')],
+      ),
+    );
+    final vm = ScannerViewModel(repo);
+    final shown = <String>[];
+
+    await vm.lookup(
+      'se-001',
+      choose: neverAsked,
+      openProduct: (p) async => shown.add(p.id),
+    );
+    expect(shown, ['p1']);
+    expect((vm.scanned, vm.error, vm.lookingUp), (null, null, false));
   });
 
   test('no match clears the piece and says so', () async {
     final repo = FakeProductRepository((_) async => [piece('a')]);
     final vm = ScannerViewModel(repo);
-    await vm.lookup('890a', choose: neverAsked);
+    await vm.lookup('890a', typed: true, choose: neverAsked);
 
     repo.answer = (_) async => [];
-    expect(await vm.lookup('nope', choose: neverAsked), isNull);
+    expect(await vm.lookup('nope', typed: true, choose: neverAsked), isNull);
     expect(vm.scanned, isNull);
-    expect(vm.error, 'No product matches "nope".');
+    expect(vm.error, 'Nothing found for "nope". Check the barcode or SKU.');
   });
 
   test(
@@ -36,14 +102,14 @@ void main() {
     () async {
       final repo = FakeProductRepository((_) async => [piece('a')]);
       final vm = ScannerViewModel(repo);
-      await vm.lookup('890a', choose: neverAsked);
+      await vm.lookup('890a', typed: true, choose: neverAsked);
 
       repo.answer = (_) async => [piece('b'), piece('c')];
-      await vm.lookup('kurta', choose: (m) async => m.last);
+      await vm.lookup('kurta', typed: true, choose: (m) async => m.last);
       expect(vm.scanned?.id, 'c');
       expect(vm.recent.map((v) => v.id), ['c', 'a']);
 
-      await vm.lookup('kurta', choose: (_) async => null);
+      await vm.lookup('kurta', typed: true, choose: (_) async => null);
       expect(vm.scanned?.id, 'c');
       expect((vm.lookingUp, vm.error), (false, null));
     },
@@ -52,9 +118,9 @@ void main() {
   test('a server error keeps the piece and returns the message', () async {
     final repo = FakeProductRepository((_) async => [piece('a')]);
     final vm = ScannerViewModel(repo);
-    await vm.lookup('890a', choose: neverAsked);
+    await vm.lookup('890a', typed: true, choose: neverAsked);
 
-    repo.answer = (_) async => throw const ApiException('Server is down');
+    repo.found = (_) async => throw const ApiException('Server is down');
     expect(await vm.lookup('890b', choose: neverAsked), 'Server is down');
     expect(vm.error, 'Server is down');
     expect(vm.scanned?.id, 'a');
@@ -67,7 +133,7 @@ void main() {
 
     expect(vm.wantsScan('890a'), isTrue);
     expect(vm.wantsScan('  '), isFalse);
-    await vm.lookup('890a', choose: neverAsked);
+    await vm.lookup('890a', typed: true, choose: neverAsked);
     expect(vm.wantsScan('890a'), isFalse);
     expect(vm.wantsScan('890b'), isTrue);
 
@@ -90,9 +156,9 @@ void main() {
     final repo = FakeProductRepository((q) async => [piece(q)]);
     final vm = ScannerViewModel(repo);
     for (var i = 0; i < 10; i++) {
-      await vm.lookup('$i', choose: neverAsked);
+      await vm.lookup('$i', typed: true, choose: neverAsked);
     }
-    await vm.lookup('5', choose: neverAsked);
+    await vm.lookup('5', typed: true, choose: neverAsked);
     expect(vm.recent.map((v) => v.id), [
       '5',
       '9',

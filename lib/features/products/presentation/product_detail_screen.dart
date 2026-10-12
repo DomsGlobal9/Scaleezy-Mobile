@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import 'package:scaleezy/core/network/api_client.dart';
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
+import 'package:scaleezy/core/utils/labels.dart';
 import 'package:scaleezy/core/utils/money.dart';
 import 'package:scaleezy/core/widgets/async_state.dart';
+import 'package:scaleezy/core/widgets/status_pill.dart';
 import 'package:scaleezy/core/widgets/ui.dart';
 import 'package:scaleezy/features/inventory/data/inventory_models.dart';
 import 'package:scaleezy/features/inventory/presentation/widgets/stock_movement_dialog.dart';
 import 'package:scaleezy/features/products/data/product_models.dart';
 import 'package:scaleezy/features/products/presentation/view_models/product_detail_view_model.dart';
+import 'package:scaleezy/features/products/presentation/widgets/stock_pill.dart';
+
+const _tabular = [FontFeature.tabularFigures()];
 
 /// One product: its photographs, every size and colour, where each piece is, and what happened
 /// to it. Its back button pops `true` when stock was moved (`false` if not) so the products list
@@ -65,14 +71,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Widget _buildScreen() {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     final variants = _vm.visibleVariants;
     final colours = _vm.colours;
     final heroPhoto = _vm.heroPhoto;
+    final status = describeStatus(productStatuses, p.status);
+    final category = describe(const {}, p.category);
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
       body: RefreshIndicator(
-        color: AppColors.accentGold,
         onRefresh: _vm.load,
         child: CustomScrollView(
           slivers: [
@@ -80,16 +88,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               expandedHeight: 360,
               pinned: true,
               stretch: true,
-              backgroundColor: AppColors.bgCard,
-              surfaceTintColor: Colors.transparent,
+              backgroundColor: c.card,
               leading: Padding(
                 padding: const EdgeInsets.all(8),
                 child: CircleAvatar(
-                  backgroundColor: Colors.white.withValues(alpha: 0.92),
+                  backgroundColor: c.card.withValues(alpha: 0.92),
                   child: IconButton(
-                    icon: const Icon(
+                    tooltip: 'Back',
+                    icon: Icon(
                       Icons.arrow_back_rounded,
-                      color: AppColors.textPrimary,
+                      color: c.text,
                       size: 20,
                     ),
                     onPressed: () => Navigator.of(context).pop(_vm.changed),
@@ -115,62 +123,51 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             SliverToBoxAdapter(
               child: Container(
-                decoration: const BoxDecoration(
-                  color: AppColors.bgLight,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                decoration: BoxDecoration(
+                  color: c.bg,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
+                  ),
                 ),
-                transform: Matrix4.translationValues(0, -24, 0),
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
+                transform: Matrix4.translationValues(0, -16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final t in [
-                          p.category,
-                          p.productType.replaceAll('_', ' '),
-                          if (p.fabric.isNotEmpty) p.fabric,
-                        ])
-                          if (t.isNotEmpty) _pill(t),
-                        if (p.status != 'ACTIVE') _pill(p.status, warn: true),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: Text(
-                            p.title,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.6,
-                              height: 1.15,
-                            ),
-                          ),
+                          child: Text(p.title, style: type.headlineSmall),
                         ),
                         const SizedBox(width: 12),
-                        Text(
-                          formatRupees(p.basePrice),
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.accentGold,
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            formatRupees(p.basePrice),
+                            style: type.titleLarge!.copyWith(
+                              fontFeatures: _tabular,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      p.productCode,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textMuted,
-                        fontFamily: 'monospace',
-                      ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        StatusPill(status.label, status.tone),
+                        Text(
+                          [
+                            p.productCode,
+                            if (category != '—') category,
+                            if (p.fabric.isNotEmpty) p.fabric,
+                          ].join(' · '),
+                          style: type.bodySmall,
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -188,13 +185,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                     if (colours.length > 1) ...[
                       const SizedBox(height: 20),
-                      const Text(
-                        'Colours',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+                      Text('Colours', style: type.titleSmall),
                       const SizedBox(height: 10),
                       SizedBox(
                         height: 86,
@@ -202,13 +193,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           scrollDirection: Axis.horizontal,
                           children: [
                             _colourChip(null, 'All', null, null),
-                            for (final c in colours)
-                              _colourChip(c.$1, c.$1, c.$2, c.$3),
+                            for (final colour in colours)
+                              _colourChip(
+                                colour.$1,
+                                colour.$1,
+                                colour.$2,
+                                colour.$3,
+                              ),
                           ],
                         ),
                       ),
                     ],
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 4),
                   ],
                 ),
               ),
@@ -216,15 +212,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             if (_vm.variants == null && _vm.error != null)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: ErrorView(message: _vm.error!, onRetry: _vm.load),
+                child: ErrorView.fromError(
+                  _vm.error!,
+                  what: 'sizes and colours',
+                  onRetry: _vm.load,
+                ),
               )
             else if (_vm.variants == null)
               SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverList.list(
                   children: [
                     for (var i = 0; i < 3; i++) ...[
-                      const Skeleton(height: 130, radius: 20),
+                      const Skeleton(height: 130),
                       const SizedBox(height: 10),
                     ],
                   ],
@@ -233,13 +233,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             else if (variants.isEmpty)
               const SliverFillRemaining(
                 hasScrollBody: false,
-                child: ErrorView(
-                  message: 'This product has no sizes or colours yet.',
+                child: EmptyState(
+                  Icons.style_outlined,
+                  'This product has no sizes or colours yet.',
                 ),
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
                 sliver: SliverList.separated(
                   itemCount: variants.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 10),
@@ -257,60 +258,45 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _pill(String text, {bool warn = false}) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-    decoration: BoxDecoration(
-      color: warn ? const Color(0xFFFFFBEB) : AppColors.accentGoldLight,
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(
-        color: warn
-            ? AppColors.accentWarning.withValues(alpha: 0.3)
-            : AppColors.accentGoldBorder,
-      ),
-    ),
-    child: Text(
-      text,
-      style: TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w800,
-        color: warn ? AppColors.accentWarning : AppColors.accentGold,
-      ),
-    ),
-  );
-
-  Widget _stat(String value, String label, {bool warn = false}) => Expanded(
-    child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.borderLight),
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: warn ? AppColors.accentDanger : AppColors.textPrimary,
+  /// A KPI tile: caps title, ~20/600 value.
+  Widget _stat(String value, String label, {bool warn = false}) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: warn ? c.danger : c.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: type.labelSmall,
             ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 10,
-              color: AppColors.textMuted,
-              fontWeight: FontWeight.w600,
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: type.titleLarge!.copyWith(
+                fontSize: 20,
+                color: warn ? c.danger : c.text,
+                fontFeatures: _tabular,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _colourChip(String? key, String label, String? photo, int? hex) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     final selected = _vm.colour == key;
     return Padding(
       padding: const EdgeInsets.only(right: 10),
@@ -319,12 +305,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Column(
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
+              duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.all(2.5),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: selected ? AppColors.accentGold : Colors.transparent,
+                  color: selected ? c.brandSolid : Colors.transparent,
                   width: 2,
                 ),
               ),
@@ -334,16 +320,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   height: 50,
                   child: key == null
                       ? Container(
-                          color: AppColors.bgSurface,
-                          child: const Icon(
+                          color: c.input,
+                          child: Icon(
                             Icons.apps_rounded,
-                            color: AppColors.textSecondary,
+                            color: c.textSecondary,
                             size: 20,
                           ),
                         )
                       : photo != null
                       ? NetImage(url: photo, width: 50, height: 50, radius: 0)
-                      : Container(color: Color(hex ?? 0xFFE2E8F0)),
+                      : Container(color: hex == null ? c.input : Color(hex)),
                 ),
               ),
             ),
@@ -355,12 +341,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  color: selected
-                      ? AppColors.accentGold
-                      : AppColors.textSecondary,
+                style: type.labelMedium!.copyWith(
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? c.text : c.textSecondary,
                 ),
               ),
             ),
@@ -402,32 +385,24 @@ class _VariantCardState extends State<_VariantCard> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
     final session = SessionScope.of(context);
-    final stockColor = v.isOutOfStock
-        ? AppColors.accentDanger
-        : v.isLowStock
-        ? AppColors.accentWarning
-        : AppColors.accentSuccess;
     final maxAtLocation = v.stockByLocation.fold<int>(
       1,
       (m, l) => l.quantity > m ? l.quantity : m,
     );
+    final averageCost = v.averageCostIfDifferent;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.borderLight),
-        boxShadow: AppColors.cardShadow,
-      ),
+    return SurfaceCard(
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               if (v.photoUrl != null) ...[
-                NetImage(url: v.photoUrl, width: 44, height: 44, radius: 12),
+                NetImage(url: v.photoUrl, width: 44, height: 44, radius: 8),
                 const SizedBox(width: 12),
               ] else if (v.colorHex != null) ...[
                 Container(
@@ -436,7 +411,7 @@ class _VariantCardState extends State<_VariantCard> {
                   decoration: BoxDecoration(
                     color: Color(v.colorHex!),
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.black12, width: 1.5),
+                    border: Border.all(color: c.borderFocus, width: 1.5),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -447,49 +422,23 @@ class _VariantCardState extends State<_VariantCard> {
                   children: [
                     Text(
                       v.label.isEmpty ? v.sku : v.label,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
+                      style: type.titleSmall,
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      [v.sku, if (v.barcode.isNotEmpty) v.barcode].join(' • '),
+                      [v.sku, if (v.barcode.isNotEmpty) v.barcode].join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
+                      style: type.labelMedium!.copyWith(
+                        color: c.textMuted,
                         fontFamily: 'monospace',
                       ),
                     ),
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${v.quantity}',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: stockColor,
-                      height: 1,
-                    ),
-                  ),
-                  Text(
-                    v.isOutOfStock
-                        ? 'sold out'
-                        : (v.isLowStock ? 'running low' : 'in stock'),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: stockColor,
-                    ),
-                  ),
-                ],
-              ),
+              const SizedBox(width: 8),
+              StockPill(v.quantity, low: v.isLowStock),
             ],
           ),
           const SizedBox(height: 12),
@@ -499,8 +448,10 @@ class _VariantCardState extends State<_VariantCard> {
             children: [
               if (v.sellingPrice != null)
                 _meta('You sell at', formatRupees(v.sellingPrice!)),
-              if (v.averageCost != null)
-                _meta('You pay', formatRupees(v.averageCost!)),
+              if (v.costPrice != null)
+                _meta('You pay', formatRupees(v.costPrice!)),
+              if (averageCost != null)
+                _meta('Average cost', formatRupees(averageCost)),
               if (v.reservedQty > 0)
                 _meta('Held for orders', '${v.reservedQty}'),
               if (v.reorderLevel > 0) _meta('Reorder at', '${v.reorderLevel}'),
@@ -521,10 +472,8 @@ class _VariantCardState extends State<_VariantCard> {
                         l.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
+                        style: type.labelMedium!.copyWith(
+                          color: c.textSecondary,
                         ),
                       ),
                     ),
@@ -534,28 +483,30 @@ class _VariantCardState extends State<_VariantCard> {
                         child: TweenAnimationBuilder<double>(
                           tween: Tween(
                             begin: 0,
-                            end: l.quantity / maxAtLocation,
+                            // Oversold rows draw an empty bar; the number says the rest.
+                            end: (l.quantity / maxAtLocation).clamp(0, 1),
                           ),
                           duration: const Duration(milliseconds: 700),
                           curve: Curves.easeOutCubic,
                           builder: (_, t, _) => LinearProgressIndicator(
                             value: t,
                             minHeight: 6,
-                            backgroundColor: AppColors.bgSurface,
-                            color: AppColors.accentGold,
+                            backgroundColor: c.input,
+                            color: c.brand,
                           ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     SizedBox(
-                      width: 28,
+                      width: 32,
                       child: Text(
                         '${l.quantity}',
                         textAlign: TextAlign.right,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
+                        style: type.labelMedium!.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: l.quantity < 0 ? c.danger : c.text,
+                          fontFeatures: _tabular,
                         ),
                       ),
                     ),
@@ -568,17 +519,17 @@ class _VariantCardState extends State<_VariantCard> {
             children: [
               if (session.can('inventory:receive'))
                 _action(
-                  'Receive Stock',
+                  'Receive stock',
                   Icons.add_rounded,
-                  AppColors.accentSuccess,
+                  c.success,
                   () => widget.onMove(true),
                 ),
               if (session.can('inventory:adjust')) ...[
                 const SizedBox(width: 8),
                 _action(
-                  'Issue Stock',
+                  'Issue stock',
                   Icons.remove_rounded,
-                  AppColors.accentDanger,
+                  c.danger,
                   () => widget.onMove(false),
                 ),
               ],
@@ -591,12 +542,9 @@ class _VariantCardState extends State<_VariantCard> {
                     duration: const Duration(milliseconds: 250),
                     child: const Icon(Icons.expand_more_rounded, size: 18),
                   ),
-                  label: const Text(
-                    'History',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
+                  label: const Text('History'),
                   style: TextButton.styleFrom(
-                    foregroundColor: AppColors.textSecondary,
+                    foregroundColor: c.textSecondary,
                     visualDensity: VisualDensity.compact,
                   ),
                 ),
@@ -610,94 +558,7 @@ class _VariantCardState extends State<_VariantCard> {
                 ? const SizedBox(width: double.infinity)
                 : FutureBuilder<List<TransactionItem>>(
                     future: _history,
-                    builder: (_, snap) {
-                      if (snap.connectionState != ConnectionState.done) {
-                        return const Padding(
-                          padding: EdgeInsets.only(top: 8),
-                          child: Skeleton(height: 60, radius: 12),
-                        );
-                      }
-                      if (snap.hasError) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            snap.error.toString(),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.accentDanger,
-                            ),
-                          ),
-                        );
-                      }
-                      final rows = snap.data ?? const [];
-                      if (rows.isEmpty) {
-                        return const Padding(
-                          padding: EdgeInsets.only(top: 8),
-                          child: Text(
-                            'Nothing has moved yet.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        );
-                      }
-                      return Container(
-                        margin: const EdgeInsets.only(top: 6),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppColors.bgSurface,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Column(
-                          children: [
-                            for (final (i, t) in rows.indexed)
-                              Padding(
-                                padding: EdgeInsets.only(
-                                  bottom: i == rows.length - 1 ? 0 : 10,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      t.quantity > 0
-                                          ? Icons.south_west_rounded
-                                          : Icons.north_east_rounded,
-                                      size: 14,
-                                      color: t.quantity > 0
-                                          ? AppColors.accentSuccess
-                                          : AppColors.accentDanger,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        [
-                                          reasonLabel(t.reason),
-                                          if (t.performedBy.isNotEmpty)
-                                            t.performedBy,
-                                          relativeTime(t.timestamp),
-                                        ].join(' • '),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: AppColors.textSecondary,
-                                        ),
-                                      ),
-                                    ),
-                                    Text(
-                                      '${t.quantity > 0 ? '+' : ''}${t.quantity} → ${t.balanceAfter}',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ).animate().fadeIn(delay: (30 * i).ms),
-                          ],
-                        ),
-                      );
-                    },
+                    builder: (_, snap) => _historyBody(snap),
                   ),
           ),
         ],
@@ -705,24 +566,111 @@ class _VariantCardState extends State<_VariantCard> {
     );
   }
 
-  Widget _meta(String label, String value) => Text.rich(
-    TextSpan(
-      children: [
-        TextSpan(
-          text: '$label ',
-          style: const TextStyle(color: AppColors.textMuted),
+  Widget _historyBody(AsyncSnapshot<List<TransactionItem>> snap) {
+    final c = context.colors;
+    final type = Theme.of(context).textTheme;
+    if (snap.connectionState != ConnectionState.done) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 8),
+        child: Skeleton(height: 60),
+      );
+    }
+    if (snap.hasError) {
+      final e = snap.error;
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          e is ApiException ? e.message : 'Could not load the history.',
+          style: type.labelMedium!.copyWith(color: c.danger),
         ),
-        TextSpan(
-          text: value,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-            color: AppColors.textPrimary,
+      );
+    }
+    final rows = snap.data ?? const [];
+    if (rows.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          'Nothing has moved yet.',
+          style: type.labelMedium!.copyWith(color: c.textMuted),
+        ),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: c.input,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          for (final (i, t) in rows.indexed)
+            Padding(
+              padding: EdgeInsets.only(bottom: i == rows.length - 1 ? 0 : 10),
+              child: Row(
+                children: [
+                  Icon(
+                    t.quantity > 0
+                        ? Icons.south_west_rounded
+                        : Icons.north_east_rounded,
+                    size: 14,
+                    color: t.quantity > 0 ? c.success : c.danger,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      [
+                        reasonLabel(t.reason),
+                        if (t.performedBy.isNotEmpty) t.performedBy,
+                        relativeTime(t.timestamp),
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: type.labelMedium!.copyWith(
+                        color: c.textSecondary,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${t.quantity > 0 ? '+' : ''}${t.quantity} → ${t.balanceAfter}',
+                    style: type.labelMedium!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: _tabular,
+                    ),
+                  ),
+                ],
+              ),
+            ).animate().fadeIn(delay: (30 * i).ms),
+        ],
+      ),
+    );
+  }
+
+  Widget _meta(String label, String value) {
+    final c = context.colors;
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '$label ',
+            style: TextStyle(color: c.textMuted),
           ),
-        ),
-      ],
-    ),
-    style: const TextStyle(fontSize: 11),
-  );
+          TextSpan(
+            text: value,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: c.text,
+              fontFeatures: _tabular,
+            ),
+          ),
+        ],
+      ),
+      style: Theme.of(
+        context,
+      ).textTheme.labelMedium!.copyWith(fontWeight: FontWeight.w400),
+    );
+  }
 
   Widget _action(
     String label,
@@ -734,9 +682,9 @@ class _VariantCardState extends State<_VariantCard> {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        color: tint(color, 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tint(color, 0.25)),
       ),
       child: Row(
         children: [
@@ -744,11 +692,9 @@ class _VariantCardState extends State<_VariantCard> {
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium!.copyWith(color: color),
           ),
         ],
       ),

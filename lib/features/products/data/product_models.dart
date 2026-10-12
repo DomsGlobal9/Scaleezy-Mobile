@@ -73,7 +73,11 @@ class VariantItem {
   final int reservedQty;
   final int reorderLevel;
 
-  /// Null when the signed-in role lacks `cost:view` -- the server strips it.
+  /// "You pay": the cost typed in by hand. Null when not set, or when the role lacks
+  /// `cost:view` (the server strips it).
+  final double? costPrice;
+
+  /// Average cost of the stock received. Null without `cost:view`; 0 when never costed.
   final double? averageCost;
   final double? sellingPrice;
   final String? photoUrl;
@@ -90,6 +94,7 @@ class VariantItem {
     required this.quantity,
     this.reservedQty = 0,
     this.reorderLevel = 0,
+    this.costPrice,
     this.averageCost,
     this.sellingPrice,
     this.photoUrl,
@@ -102,6 +107,11 @@ class VariantItem {
   bool get isLowStock =>
       reorderLevel > 0 && quantity > 0 && quantity <= reorderLevel;
   bool get isOutOfStock => quantity <= 0;
+
+  /// The average, worth showing as "Average cost" only when it is known and differs from
+  /// "You pay".
+  double? get averageCostIfDifferent =>
+      (averageCost ?? 0) > 0 && averageCost != costPrice ? averageCost : null;
 
   String get label => [
     if (colorName.isNotEmpty) colorName,
@@ -127,6 +137,7 @@ class VariantItem {
           : stocks.fold(0, (sum, s) => sum + asInt(s['quantity'])),
       reservedQty: stocks.fold(0, (sum, s) => sum + asInt(s['reservedQty'])),
       reorderLevel: asInt(j['reorderLevel']),
+      costPrice: _setCost(j['costPrice']),
       averageCost: asMoney(j['averageCost']),
       sellingPrice: asMoney(j['sellingPrice']) ?? asMoney(product['basePrice']),
       photoUrl: asOptString(j['photoUrl']),
@@ -146,6 +157,7 @@ class VariantItem {
     colorName: asString(j['color']),
     quantity: asInt(j['stock']),
     reorderLevel: asInt(j['reorderLevel']),
+    costPrice: _setCost(j['costPrice']),
     averageCost: asMoney(j['averageCost']),
     sellingPrice:
         asMoney(j['effectiveSellingPrice']) ?? asMoney(j['sellingPrice']),
@@ -176,6 +188,63 @@ class VariantItem {
     photoUrl: asOptString(j['photoUrl']),
   );
 }
+
+/// A hand-entered cost; /variants/search sends 0 for "not set", like the website's `v.costPrice ?`.
+double? _setCost(dynamic v) {
+  final cost = asMoney(v);
+  return cost != null && cost > 0 ? cost : null;
+}
+
+/// One hit from GET /search: a variant (barcode, SKU or variant code) or a product (code).
+class SearchHit {
+  final String id;
+  final String label;
+  final String code;
+  final String sku;
+  final String barcode;
+
+  const SearchHit({
+    required this.id,
+    required this.label,
+    required this.code,
+    this.sku = '',
+    this.barcode = '',
+  });
+
+  factory SearchHit.fromJson(Map<String, dynamic> j) => SearchHit(
+    id: asString(j['id']),
+    label: asString(j['label']),
+    code: asString(j['code']),
+    sku: asString(j['sku']),
+    barcode: asString(j['barcode']),
+  );
+
+  /// The identifier that equals [q], ignoring case, as the server spells it; null for a
+  /// fuzzy (title or colour) hit.
+  String? exactCode(String q) {
+    final want = q.trim().toLowerCase();
+    for (final c in [barcode, sku, code]) {
+      if (c.isNotEmpty && c.toLowerCase() == want) return c;
+    }
+    return null;
+  }
+}
+
+/// GET /search -> data. Exact identifier matches come back alone; otherwise title matches.
+class SearchResults {
+  final List<SearchHit> products;
+  final List<SearchHit> variants;
+
+  const SearchResults({this.products = const [], this.variants = const []});
+
+  factory SearchResults.fromJson(Map<String, dynamic> j) => SearchResults(
+    products: asMaps(j['products']).map(SearchHit.fromJson).toList(),
+    variants: asMaps(j['variants']).map(SearchHit.fromJson).toList(),
+  );
+}
+
+/// A choice from GET /catalog/config, e.g. category WOMEN labelled "Women".
+typedef CatalogOption = ({String value, String label});
 
 class LocationStock {
   final String locationId;

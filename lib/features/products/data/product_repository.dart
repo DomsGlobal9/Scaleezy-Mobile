@@ -72,4 +72,24 @@ class ProductRepository {
     );
     return asMaps(data['items']).map(VariantItem.fromSearchJson).toList();
   }
+
+  /// product:view. The website's scan search: barcode, SKU, variant code or product code,
+  /// ignoring case and skipping trashed products; title matches only when nothing matched
+  /// exactly.
+  Future<SearchResults> search(String q) async => SearchResults.fromJson(
+    asMap(dataOf(await _api.get(ApiEndpoints.search, query: {'q': q.trim()}))),
+  );
+
+  /// product:view. The shop's own categories, in its order (`/catalog/config` CATEGORY).
+  Future<List<CatalogOption>> getCategories() async {
+    final config = asMap(dataOf(await _api.get(ApiEndpoints.catalogConfig)));
+    return [
+      for (final c in asMaps(config['CATEGORY']))
+        if (asString(c['value']).isNotEmpty)
+          (
+            value: asString(c['value']),
+            label: asOptString(c['label']) ?? asString(c['value']),
+          ),
+    ];
+  }
 }

@@ -88,4 +88,8 @@ abstract final class ApiEndpoints {
   // Day book & receipts
   static const dayBook = '/daybook';
   static String receipt(String orderId) => '/counter-sales/$orderId/receipt';
+
+  // Scanning and catalogue options (products & scanner)
+  static const search = '/search';
+  static const catalogConfig = '/catalog/config';
 }
