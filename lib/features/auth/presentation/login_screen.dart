@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:scaleezy/core/session/auth_session.dart';
 import 'package:scaleezy/core/theme/app_theme.dart';
@@ -35,11 +36,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _submit({String? clientId}) async {
     FocusScope.of(context).unfocus();
-    await _vm.submit(
+    final error = await _vm.submit(
       _emailController.text,
       _passwordController.text,
       clientId: clientId,
     );
+    // Signed in: let Google Password Manager / iCloud Keychain offer to save these, so the
+    // next sign-in fills them in with one tap.
+    if (error == null && _vm.workspaceChoice == null) {
+      TextInput.finishAutofillContext();
+    }
   }
 
   @override
@@ -138,129 +144,135 @@ class _LoginScreenState extends State<LoginScreen> {
       focusedBorder: field.copyWith(borderSide: BorderSide(color: c.brandInk)),
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _label(context, 'Email address'),
-        TextField(
-          controller: _emailController,
-          keyboardType: TextInputType.emailAddress,
-          autofillHints: const [AutofillHints.email],
-          textInputAction: TextInputAction.next,
-          enabled: !busy,
-          decoration: decoration('you@yourshop.com'),
-        ),
-        const SizedBox(height: 20),
-        _label(context, 'Password'),
-        TextField(
-          controller: _passwordController,
-          obscureText: _obscure,
-          autofillHints: const [AutofillHints.password],
-          textInputAction: TextInputAction.done,
-          enabled: !busy,
-          onSubmitted: (_) => _submit(),
-          decoration: decoration(
-            'Your password',
-            suffix: IconButton(
-              tooltip: _obscure ? 'Show password' : 'Hide password',
-              icon: Icon(
-                _obscure
-                    ? Icons.visibility_outlined
-                    : Icons.visibility_off_outlined,
-                size: 20,
-                color: c.textMuted,
+    // One autofill group so the phone's password manager sees an email + password pair.
+    return AutofillGroup(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _label(context, 'Email address'),
+          TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            autocorrect: false,
+            autofillHints: const [AutofillHints.email, AutofillHints.username],
+            textInputAction: TextInputAction.next,
+            enabled: !busy,
+            decoration: decoration('you@yourshop.com'),
+          ),
+          const SizedBox(height: 20),
+          _label(context, 'Password'),
+          TextField(
+            controller: _passwordController,
+            obscureText: _obscure,
+            autofillHints: const [AutofillHints.password],
+            textInputAction: TextInputAction.done,
+            enabled: !busy,
+            onSubmitted: (_) => _submit(),
+            decoration: decoration(
+              'Your password',
+              suffix: IconButton(
+                tooltip: _obscure ? 'Show password' : 'Hide password',
+                icon: Icon(
+                  _obscure
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  size: 20,
+                  color: c.textMuted,
+                ),
+                onPressed: () => setState(() => _obscure = !_obscure),
               ),
-              onPressed: () => setState(() => _obscure = !_obscure),
             ),
           ),
-        ),
-        if (error != null) ...[
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-            decoration: BoxDecoration(
-              color: tint(c.danger),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: tint(c.danger, 0.3)),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.error_outline_rounded, size: 17, color: c.danger),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    error,
-                    style: type.bodyMedium!.copyWith(
-                      color: c.danger,
-                      height: 1.5,
+          if (error != null) ...[
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              decoration: BoxDecoration(
+                color: tint(c.danger),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: tint(c.danger, 0.3)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.error_outline_rounded, size: 17, color: c.danger),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      error,
+                      style: type.bodyMedium!.copyWith(
+                        color: c.danger,
+                        height: 1.5,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
-        const SizedBox(height: 24),
-        FilledButton(
-          onPressed: busy ? null : () => _submit(),
-          style: FilledButton.styleFrom(
-            backgroundColor: c.brandSolid,
-            foregroundColor: c.onBrandSolid,
-            disabledBackgroundColor: tint(c.brandSolid, 0.75),
-            disabledForegroundColor: c.onBrandSolid,
-            minimumSize: const Size.fromHeight(54),
-            shape: const StadiumBorder(),
-            textStyle: type.titleMedium!.copyWith(fontWeight: FontWeight.w700),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (busy) ...[
-                SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: c.onBrandSolid,
+          ],
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: busy ? null : () => _submit(),
+            style: FilledButton.styleFrom(
+              backgroundColor: c.brandSolid,
+              foregroundColor: c.onBrandSolid,
+              disabledBackgroundColor: tint(c.brandSolid, 0.75),
+              disabledForegroundColor: c.onBrandSolid,
+              minimumSize: const Size.fromHeight(54),
+              shape: const StadiumBorder(),
+              textStyle: type.titleMedium!.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (busy) ...[
+                  SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: c.onBrandSolid,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
+                  const SizedBox(width: 10),
+                ],
+                Text(busy ? 'Signing in…' : 'Sign in'),
+                if (!busy) ...[
+                  const SizedBox(width: 10),
+                  const Icon(Icons.arrow_forward_rounded, size: 18),
+                ],
               ],
-              Text(busy ? 'Signing in…' : 'Sign in'),
-              if (!busy) ...[
-                const SizedBox(width: 10),
-                const Icon(Icons.arrow_forward_rounded, size: 18),
-              ],
-            ],
-          ),
-        ),
-        if (busy) ...[
-          const SizedBox(height: 12),
-          Text(
-            'The server can take a little while to answer. Hang on.',
-            textAlign: TextAlign.center,
-            style: type.labelMedium!.copyWith(color: c.textMuted),
-          ),
-        ],
-        const SizedBox(height: 16),
-        // No self-service reset: the owner or an admin sets passwords. Saying so beats
-        // trying passwords until the sign-in is rate-limited.
-        TextButton(
-          onPressed: () => setState(() => _forgotOpen = !_forgotOpen),
-          style: TextButton.styleFrom(foregroundColor: c.textSecondary),
-          child: const Text('Forgot your password?'),
-        ),
-        if (_forgotOpen)
-          Text(
-            'Ask your shop owner or manager. They can set a new one for you in '
-            'Settings → Team members.',
-            textAlign: TextAlign.center,
-            style: type.bodyMedium!.copyWith(
-              color: c.textSecondary,
-              height: 1.6,
             ),
           ),
-      ],
+          if (busy) ...[
+            const SizedBox(height: 12),
+            Text(
+              'The server can take a little while to answer. Hang on.',
+              textAlign: TextAlign.center,
+              style: type.labelMedium!.copyWith(color: c.textMuted),
+            ),
+          ],
+          const SizedBox(height: 16),
+          // No self-service reset: the owner or an admin sets passwords. Saying so beats
+          // trying passwords until the sign-in is rate-limited.
+          TextButton(
+            onPressed: () => setState(() => _forgotOpen = !_forgotOpen),
+            style: TextButton.styleFrom(foregroundColor: c.textSecondary),
+            child: const Text('Forgot your password?'),
+          ),
+          if (_forgotOpen)
+            Text(
+              'Ask your shop owner or manager. They can set a new one for you in '
+              'Settings → Team members.',
+              textAlign: TextAlign.center,
+              style: type.bodyMedium!.copyWith(
+                color: c.textSecondary,
+                height: 1.6,
+              ),
+            ),
+        ],
+      ),
     );
   }
 
